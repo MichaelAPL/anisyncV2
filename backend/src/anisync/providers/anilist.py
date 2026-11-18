@@ -69,6 +69,22 @@ mutation ($mediaId: Int, $status: MediaListStatus, $scoreRaw: Int, $progress: In
 }
 """
 
+# Flat list sorted by update time (MediaListCollection is grouped by status, so it can't be read newest-first).
+RECENT_QUERY = """
+query ($userId: Int, $page: Int) {
+  Page(page: $page, perPage: 50) {
+    pageInfo { hasNextPage }
+    mediaList(userId: $userId, type: ANIME, sort: UPDATED_TIME_DESC) {
+      id mediaId status progress updatedAt hiddenFromStatusLists customLists
+      score(format: POINT_100)
+      startedAt { year month day }
+      completedAt { year month day }
+      media { idMal episodes title { userPreferred } coverImage { medium } }
+    }
+  }
+}
+"""
+
 ENTRY_ID_QUERY = "query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { id } }"
 DELETE_MUTATION = "mutation ($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }"
 VIEWER_QUERY = "{ Viewer { id name } }"
@@ -144,31 +160,64 @@ class AniListClient(ProviderClient):
         viewer = (await self.gql(VIEWER_QUERY))["Viewer"]
         return RemoteUser(id=str(viewer["id"]), username=viewer["name"])
 
-    async def fetch_list(self) -> list[ListEntry]:
+    @staticmethod
+    def _entry(e: dict[str, Any]) -> ListEntry:
+        media = e["media"]
+        ids = {"anilist": str(e["mediaId"])}
+        if media.get("idMal"):
+            ids["mal"] = str(media["idMal"])
+        return ListEntry(
+            media_id=str(e["mediaId"]),
+            external_ids=ids,
+            remote_entry_id=str(e["id"]),
+            title=media["title"]["userPreferred"],
+            total_episodes=media.get("episodes"),
+            image_url=(media.get("coverImage") or {}).get("medium"),
+            status=TO_STATUS[e["status"]],
+            rewatching=e["status"] == "REPEATING",
+            progress=e.get("progress") or 0,
+            score=e.get("score") or None,
+            started_at=_fuzzy_to_date(e.get("startedAt")),
+            finished_at=_fuzzy_to_date(e.get("completedAt")),
+            updated_at=datetime.fromtimestamp(e["updatedAt"], UTC) if e.get("updatedAt") else None,
+        )
+
+    async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
+        if since is not None:
+            return await self._fetch_recent(since)
         data = await self.gql(LIST_QUERY, {"userId": int(self.remote_user_id)})
         seen: dict[int, ListEntry] = {}  # entries can appear in several custom lists
         for lst in data["MediaListCollection"]["lists"]:
             for e in lst["entries"]:
-                media = e["media"]
-                ids = {"anilist": str(e["mediaId"])}
-                if media.get("idMal"):
-                    ids["mal"] = str(media["idMal"])
-                seen[e["id"]] = ListEntry(
-                    media_id=str(e["mediaId"]),
-                    external_ids=ids,
-                    remote_entry_id=str(e["id"]),
-                    title=media["title"]["userPreferred"],
-                    total_episodes=media.get("episodes"),
-                    image_url=(media.get("coverImage") or {}).get("medium"),
-                    status=TO_STATUS[e["status"]],
-                    rewatching=e["status"] == "REPEATING",
-                    progress=e.get("progress") or 0,
-                    score=e.get("score") or None,
-                    started_at=_fuzzy_to_date(e.get("startedAt")),
-                    finished_at=_fuzzy_to_date(e.get("completedAt")),
-                    updated_at=datetime.fromtimestamp(e["updatedAt"], UTC) if e.get("updatedAt") else None,
-                )
+                seen[e["id"]] = self._entry(e)
         return list(seen.values())
+
+    @staticmethod
+    def _on_the_list(e: dict[str, Any]) -> bool:
+        """False for entries `MediaListCollection` doesn't return: hidden from the status lists and in no custom list.
+
+        The full read uses that collection and the incremental read the flat `mediaList`, which does return them;
+        without this check an incremental read would add such an entry and the next full read would remove it again.
+        """
+        if not e.get("hiddenFromStatusLists"):
+            return True
+        custom = e.get("customLists") or {}
+        return any(custom.values()) if isinstance(custom, dict) else bool(custom)
+
+    async def _fetch_recent(self, since: datetime) -> list[ListEntry]:
+        """Entries updated after `since`, newest first, stopping at the first older one."""
+        found: dict[int, ListEntry] = {}
+        page = 1
+        while True:
+            data = await self.gql(RECENT_QUERY, {"userId": int(self.remote_user_id), "page": page})
+            for e in data["Page"]["mediaList"]:
+                if e.get("updatedAt") and datetime.fromtimestamp(e["updatedAt"], UTC) <= since:
+                    return list(found.values())
+                if self._on_the_list(e):
+                    found[e["id"]] = self._entry(e)
+            if not data["Page"]["pageInfo"]["hasNextPage"]:
+                return list(found.values())
+            page += 1
 
     async def save_entry(self, entry: ListEntry) -> None:
         status = "REPEATING" if entry.rewatching and entry.status == Status.WATCHING else FROM_STATUS[entry.status]
@@ -216,6 +265,7 @@ PROVIDER = register(
         monogram="AL",
         colors=ProviderColors(bg="#DDF3FF", fg="#0369A1", dark_bg="#0B3550", dark_fg="#A8DDFF"),
         auth_kind=AuthKind.OAUTH_CODE,
+        incremental_reads=True,
         score_step=1,
         rate_limit=(25, 60),  # AniList allows ~90/min but is sometimes degraded to 30/min: stay under that
         client=AniListClient,

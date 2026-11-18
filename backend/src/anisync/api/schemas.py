@@ -34,6 +34,11 @@ class ListEntryOut(BaseModel):
     external_ids: dict[str, str]
 
 
+class RefreshOut(BaseModel):
+    mode: Literal["full", "incremental", "snapshot"]
+    changed: int
+
+
 class SavedEntryOut(OkOut):
     queued_mirrors: int
 
@@ -66,6 +71,8 @@ class MirrorResultOut(BaseModel):
     errors: list[str] | None = None  # applied syncs only
     error: str | None = None
     reauth_required: bool | None = None
+    read: Literal["full", "incremental", "snapshot"] | None = None  # how the mirror's current state was learned
+    drifted: int | None = None  # full reads: entries edited directly on the mirror's site since our last write
 
 
 class SyncRunOut(BaseModel):

@@ -11,10 +11,12 @@ Current progress and next steps: **`docs/ROADMAP.md`** (read it first, keep it u
 - **Master + mirrors.** The user picks one linked account as the *master* (source of truth).
   Every other linked account is a *mirror* that is overwritten to match it.
 - **Two sync paths:**
-  1. Nightly job (`DAILY_SYNC_CRON`, default 04:00 UTC): full diff master → each mirror.
+  1. Scheduled sync: an hourly tick (`SYNC_TICK_CRON`) syncs the users whose `user_id % 24` is the current hour, so
+     each user once a day. It reads the master incrementally, plans against **snapshots**, writes only differences.
   2. Editing the list *in AniSync* writes to the master service immediately, then queues one
      `push_entry` job per mirror.
-- Edits made directly on a mirror's website are overwritten at the next nightly sync (shown to users).
+- Edits made directly on a mirror's website are overwritten at the next **full read** of that mirror (at least
+  weekly), not at every scheduled sync (shown to users).
 - No AniSync passwords: users sign in with a redirect-flow provider (OAuth); the first linked account creates the
   user and becomes master. Credential-only providers (Kitsu) are linked afterwards, once signed in.
 - Mirror options: `sync_enabled`, `prune_missing` (delete mirror entries not on master; off by default).
@@ -56,6 +58,9 @@ Current progress and next steps: **`docs/ROADMAP.md`** (read it first, keep it u
 - `mapping.py`: `IdMapper` resolves provider → canonical media → provider. Order: database, hints on list entries
   (`learn_from`), then remote lookups by providers that declare `lookup_from`. Use as `async with IdMapper(session)`.
 - `engine.py`: **pure** diff (`plan_sync`): no I/O, unit + property tested.
+- `snapshots.py`: what we last read/wrote per account (`list_snapshots`). Syncs plan from snapshots; a no-change sync
+  costs one request (the master's incremental read). Full reads (first sync, weekly, forced) replace the snapshot and
+  are the only way to notice removals and direct edits (`drifted`). `mapping.py` also keeps a 7-day negative lookup cache.
 - `sync.py`: orchestration (token refresh via the provider's `refresh` hook, run plans, `push_entry`). `jobs.py`: Procrastinate tasks.
 - `sessions.py` (server-side browser sessions, token hash only), `security.py` (CSRF + request-ID middleware),
   `ratelimit.py` (Postgres-backed), `logs.py` (secret redaction), `crypto.py` (`TOKEN_ENCRYPTION_KEYS`, rotation),

@@ -6,6 +6,7 @@ or let the API process run one in-process (RUN_WORKER_IN_PROCESS=true, the defau
 """
 
 import logging
+from datetime import UTC, datetime
 
 import httpx
 from procrastinate import App, PsycopgConnector, RetryStrategy
@@ -28,24 +29,26 @@ TRANSIENT = RetryStrategy(
 )
 
 
-@app.periodic(cron=settings.daily_sync_cron, periodic_id="daily-sync")
-@app.task(queue="sync", queueing_lock="daily-sync")
-async def daily_sync(timestamp: int) -> None:
-    """Fan out one sync_user job per user that has a master list."""
+@app.periodic(cron=settings.sync_tick_cron, periodic_id="sync-tick")
+@app.task(queue="sync", queueing_lock="sync-tick")
+async def sync_tick(timestamp: int) -> None:
+    """Hourly: queue a sync for the users whose hour it is (each user once a day, spread over 24 hours)."""
+    hour = datetime.fromtimestamp(timestamp, UTC).hour
     async with SessionLocal() as session:
-        user_ids = await sync.users_with_master(session)
+        user_ids = await sync.users_in_slot(session, hour)
     for user_id in user_ids:
-        await enqueue_user_sync(user_id, "daily")
+        await enqueue_user_sync(user_id, "scheduled")
 
 
 @app.periodic(cron="30 3 * * *", periodic_id="housekeeping")
 @app.task(queue="maintenance", queueing_lock="housekeeping")
 async def housekeeping(timestamp: int) -> None:
-    """Delete expired sessions and old rate-limit attempts."""
+    """Delete expired sessions, old rate-limit attempts and old sync history."""
     async with SessionLocal() as session:
         expired = await sessions.purge_expired(session)
         attempts = await ratelimit.purge_old(session)
-    log.info("housekeeping: %s expired sessions, %s old rate-limit rows removed", expired, attempts)
+        runs = await sync.purge_runs(session)
+    log.info("housekeeping: removed %s sessions, %s rate-limit rows, %s sync runs", expired, attempts, runs)
 
 
 @app.periodic(cron=settings.id_dataset_cron, periodic_id="seed-ids")

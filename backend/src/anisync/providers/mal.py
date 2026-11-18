@@ -107,14 +107,19 @@ class MalClient(ProviderClient):
         data = (await self._request("GET", f"{API}/users/@me")).json()
         return RemoteUser(id=str(data["id"]), username=data["name"])
 
-    async def fetch_list(self) -> list[ListEntry]:
+    async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
         entries: list[ListEntry] = []
         url: str | None = f"{API}/users/@me/animelist"
         params: dict | None = {"fields": "list_status,num_episodes", "limit": 1000, "nsfw": "true"}
+        if since is not None:  # newest first, small pages: a list with nothing new costs one tiny request
+            params |= {"sort": "list_updated_at", "limit": 100}
         while url:
             data = (await self._request("GET", url, params=params)).json()
             for item in data["data"]:
                 node, ls = item["node"], item["list_status"]
+                updated = datetime.fromisoformat(ls["updated_at"]) if ls.get("updated_at") else None
+                if since is not None and updated is not None and updated <= since:
+                    return entries  # everything after this is older still
                 entries.append(
                     ListEntry(
                         media_id=str(node["id"]),
@@ -128,7 +133,7 @@ class MalClient(ProviderClient):
                         rewatching=ls.get("is_rewatching", False),
                         started_at=_parse_date(ls.get("start_date")),
                         finished_at=_parse_date(ls.get("finish_date")),
-                        updated_at=datetime.fromisoformat(ls["updated_at"]) if ls.get("updated_at") else None,
+                        updated_at=updated,
                     )
                 )
             url = data.get("paging", {}).get("next")
@@ -160,6 +165,7 @@ PROVIDER = register(
         monogram="MAL",
         colors=ProviderColors(bg="#E3E9F7", fg="#2E51A2", dark_bg="#1F2F5C", dark_fg="#C9D6FF"),
         auth_kind=AuthKind.OAUTH_PKCE_PLAIN,
+        incremental_reads=True,
         score_step=10,
         rate_limit=(1, 1),  # MAL doesn't publish limits; ~1 req/s is safe.
         client=MalClient,

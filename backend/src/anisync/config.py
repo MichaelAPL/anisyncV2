@@ -35,8 +35,9 @@ class Settings(BaseSettings):
     # Run the Procrastinate worker inside the API process (cheap single-container deploys).
     # Set to false and run `anisync-worker` separately once you need to scale.
     run_worker_in_process: bool = True
-    # Cron expression (UTC) for the daily master -> mirrors sync.
-    daily_sync_cron: str = "0 4 * * *"
+    # Cron expression (UTC) of the scheduler tick. It should fire hourly: each tick syncs the users whose hour it is
+    # (user id modulo 24), so every user is synced once a day and the load is spread over the day.
+    sync_tick_cron: str = "0 * * * *"
 
     @property
     def is_production(self) -> bool:

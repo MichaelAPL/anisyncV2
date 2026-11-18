@@ -64,6 +64,11 @@ class LinkedAccount(Base):
     # Remove entries from this mirror that are not on the master list.
     prune_missing: Mapped[bool] = mapped_column(Boolean, default=False)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Reading the list: `sync_cursor` = the newest provider-side update time we have seen (incremental reads ask only
+    # for entries newer than it); `last_full_read_at` = when the whole list was last read (a full read is also what
+    # notices removals and edits made directly on the provider's site, so it happens at least weekly).
+    sync_cursor: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_full_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[User] = relationship(back_populates="accounts", foreign_keys=[user_id])
@@ -126,6 +131,17 @@ class MediaExternalId(Base):
         return value
 
 
+class LookupMiss(Base):
+    """A title ID that no provider could translate recently, so we don't ask again until `checked_at` is old."""
+
+    __tablename__ = "lookup_misses"
+
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    target: Mapped[str] = mapped_column(String(32), primary_key=True)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
 class ListSnapshot(Base):
     """What we last read from, or wrote to, one linked account for one title (used from Phase 3 on)."""
 
@@ -143,7 +159,8 @@ class ListSnapshot(Base):
     started_at: Mapped[date | None] = mapped_column(Date)
     finished_at: Mapped[date | None] = mapped_column(Date)
     remote_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # Hash of the synced fields at our last write; if the provider's copy differs, it was edited elsewhere.
+    # Hash of the synced fields as last read from or written to the provider; a different hash at the next full read
+    # means the entry was edited directly on the provider's site.
     last_written_hash: Mapped[str | None] = mapped_column(String(64))
     # Display data and ID hints, so the list can be served (and prune safety checked) without asking the provider.
     title: Mapped[str] = mapped_column(Text, default="")

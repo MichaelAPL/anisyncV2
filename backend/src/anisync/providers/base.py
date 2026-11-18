@@ -151,6 +151,9 @@ class Provider:
     url_pattern: re.Pattern[str] | None = None
     # Provider IDs whose title IDs this provider's client can translate (`ProviderClient.lookup_external_ids`).
     lookup_from: frozenset[str] = frozenset()
+    # `fetch_list(since=...)` returns only entries changed after `since` (newest first, stopping early), which makes
+    # a sync with nothing new cost one small request instead of a full list read.
+    incremental_reads: bool = False
     # Auth hooks; which ones are set follows from `auth_kind`. No `refresh` means tokens can't be renewed.
     authorize_url: AuthorizeUrl | None = None
     exchange_code: ExchangeCode | None = None
@@ -231,8 +234,10 @@ class ProviderClient(abc.ABC):
         """Return the account that owns the access token."""
 
     @abc.abstractmethod
-    async def fetch_list(self) -> list[ListEntry]:
-        """Return the user's full anime list."""
+    async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
+        """Return the user's anime list. With `since` (only for providers with `incremental_reads`): just the
+        entries whose provider-side update time is strictly after it. Strictly, because bulk imports give thousands of
+        entries one identical timestamp, and re-reading them all on every sync would defeat the point."""
 
     @abc.abstractmethod
     async def save_entry(self, entry: ListEntry) -> None:

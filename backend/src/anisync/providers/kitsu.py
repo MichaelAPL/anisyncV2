@@ -85,7 +85,8 @@ class KitsuClient(ProviderClient):
         user = data["data"][0]
         return RemoteUser(id=user["id"], username=user["attributes"]["name"])
 
-    async def fetch_list(self) -> list[ListEntry]:
+    async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
+        # No incremental reads for Kitsu (`incremental_reads` is off): `since` is ignored and the whole list is read.
         entries: list[ListEntry] = []
         url: str | None = f"{API}/library-entries"
         params: dict | None = {

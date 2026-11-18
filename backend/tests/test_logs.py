@@ -80,19 +80,18 @@ def test_install_is_idempotent():
 
 
 async def test_errors_stored_in_a_sync_summary_are_redacted(session, fakes):
-    from tests.fakes import FakeClient
+    from anisync.providers import get_provider
+    from tests.test_sync import make_user
 
-    class Boom(Exception):
-        pass
-
-    client = FakeClient.__subclasses__()[0]("t", "u")
+    user = await make_user(session)
+    mirror = user.mirrors[0]
+    client = get_provider(mirror.provider).client("t", "u")
 
     async def save(entry):
-        raise Boom("403 https://api.example/save?access_token=SECRET9&x=1")
+        raise RuntimeError("403 https://api.example/save?access_token=SECRET9&x=1")
 
     client.save_entry = save
-    plan = sync.plan_sync(
-        [ListEntry(media_id="a1", status=Status.WATCHING, external_ids={"fa": "a1", "fb": "b1"})], [], {"a1": "b1"}, 1
-    )
-    errors = await sync.apply_plan(client, plan)
+    entry = ListEntry(media_id="a1", status=Status.WATCHING, external_ids={"fa": "a1", "fb": "b1"})
+    plan = sync.plan_sync([entry], [], {"a1": "b1"}, 1)
+    errors = await sync.apply_plan(session, mirror, client, plan)
     assert len(errors) == 1 and "SECRET9" not in errors[0] and "[redacted]" in errors[0]

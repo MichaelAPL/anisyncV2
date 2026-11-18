@@ -135,7 +135,7 @@ def acme():
 
 @pytest.fixture
 def fakes():
-    """Two in-memory providers: "fa" (score step 1, no token refresh) and "fb" (step 10, refreshable)."""
+    """In-memory providers: "fa" (step 1, reads incrementally, no refresh) and "fb" (step 10, refreshable)."""
     from datetime import UTC, datetime, timedelta
 
     from anisync.providers.base import TokenSet
@@ -148,7 +148,7 @@ def fakes():
         calls.append(refresh_token)
         return TokenSet("fresh-access", "fresh-refresh", datetime.now(UTC) + timedelta(days=30))
 
-    f.register_fake("fa", score_step=1)
+    f.register_fake("fa", score_step=1, incremental=True)
     f.register_fake("fb", score_step=10, refresh=refresh)
     f.FakeClient.refresh_calls = calls
     yield f.FakeClient

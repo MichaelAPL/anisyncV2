@@ -12,21 +12,26 @@ to any other through it ("provider -> media -> provider"). IDs come from, in ord
 import logging
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from types import TracebackType
 
 import httpx
 from sqlalchemy import select, tuple_
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from anisync.models import Media, MediaExternalId
+from anisync.models import LookupMiss, Media, MediaExternalId
 from anisync.providers import get_provider, is_registered
 from anisync.providers.base import ListEntry, ProviderClient
 
 log = logging.getLogger(__name__)
 
 CHUNK = 1000
+# A title no provider could translate is not asked about again for this long (new titles show up in datasets and
+# provider cross-references over time, and a learned mapping is found in the database before any lookup).
+MISS_TTL = timedelta(days=7)
 
 
 def _chunks[T](items: Sequence[T], size: int) -> Iterable[Sequence[T]]:
@@ -189,18 +194,55 @@ class IdMapper:
     # ---- resolving ------------------------------------------------------------------------------------
 
     async def resolve(self, source: str, target: str, ids: Sequence[str]) -> dict[str, str | None]:
-        """Map title IDs on provider `source` to IDs on `target` (None = no known equivalent)."""
+        """Map title IDs on provider `source` to IDs on `target` (None = no known equivalent).
+
+        Order: the database; then remote lookups for IDs not recently found to be untranslatable; then hops through a
+        third provider. IDs that still have no equivalent are remembered as misses so the next sync doesn't ask again.
+        """
         ids = list(dict.fromkeys(ids))
         if source == target:
             return {i: i for i in ids}
         result: dict[str, str | None] = dict.fromkeys(ids)
-        for step in (None, self._remote_lookup, self._hop):
-            if step:
-                await step(source, target, [i for i in ids if result[i] is None])
-            result |= await self._cached(source, target, [i for i in ids if result[i] is None])
-            if all(result[i] is not None for i in ids):
-                break
+        result |= await self._cached(source, target, ids)
+        missing = [i for i in ids if result[i] is None]
+        if not missing:
+            return result
+        skip = await self._recent_misses(source, target, missing)
+        attempt = [i for i in missing if i not in skip]
+        if attempt:
+            await self._remote_lookup(source, target, attempt)
+            result |= await self._cached(source, target, attempt)
+            left = [i for i in attempt if result[i] is None]
+            if left:
+                await self._hop(source, target, left)
+                result |= await self._cached(source, target, left)
+                left = [i for i in left if result[i] is None]
+            await self._record_misses(source, target, left)
         return result
+
+    async def _recent_misses(self, source: str, target: str, ids: Sequence[str]) -> set[str]:
+        found: set[str] = set()
+        for chunk in _chunks(list(ids), CHUNK):
+            rows = await self.session.scalars(
+                select(LookupMiss.source_id).where(
+                    LookupMiss.source == source,
+                    LookupMiss.target == target,
+                    LookupMiss.source_id.in_(chunk),
+                    LookupMiss.checked_at > datetime.now(UTC) - MISS_TTL,
+                )
+            )
+            found.update(rows)
+        return found
+
+    async def _record_misses(self, source: str, target: str, ids: Sequence[str]) -> None:
+        now = datetime.now(UTC)
+        for chunk in _chunks(list(ids), CHUNK):
+            stmt = pg_insert(LookupMiss).values(
+                [{"source": source, "source_id": i, "target": target, "checked_at": now} for i in chunk]
+            )
+            await self.session.execute(
+                stmt.on_conflict_do_update(index_elements=["source", "source_id", "target"], set_={"checked_at": now})
+            )
 
     async def _cached(self, source: str, target: str, ids: Sequence[str]) -> dict[str, str]:
         src, tgt = aliased(MediaExternalId), aliased(MediaExternalId)

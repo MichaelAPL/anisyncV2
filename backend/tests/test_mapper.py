@@ -132,3 +132,40 @@ async def test_display_data_is_kept_on_the_media(session, no_network):
         ("anilist", "21", "learned"),
         ("mal", "1", "learned"),
     ]
+
+
+# ---- the negative cache -------------------------------------------------------------------------------------
+
+
+async def test_untranslatable_ids_are_not_asked_about_again_for_a_week(session, acme):
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+
+    from anisync.models import LookupMiss
+
+    async with IdMapper(session) as mapper:
+        assert await mapper.resolve("mal", "acme", ["404"]) == {"404": None}
+        assert acme.calls == [("mal", ["404"])]
+        assert await mapper.resolve("mal", "acme", ["404"]) == {"404": None}
+        assert len(acme.calls) == 1  # remembered as a miss
+
+        await session.execute(update(LookupMiss).values(checked_at=datetime.now(UTC) - timedelta(days=8)))
+        assert await mapper.resolve("mal", "acme", ["404"]) == {"404": None}
+        assert len(acme.calls) == 2  # asked again after the week
+
+
+async def test_a_title_learned_later_resolves_despite_an_earlier_miss(session, acme):
+    async with IdMapper(session) as mapper:
+        assert await mapper.resolve("mal", "acme", ["7"]) == {"7": None}
+        await mapper.remember({"mal": "7", "acme": "A7"})  # e.g. a dataset import or a list entry taught us
+        assert await mapper.resolve("mal", "acme", ["7"]) == {"7": "A7"}
+    assert len(acme.calls) == 1
+
+
+async def test_misses_are_per_direction(session, acme):
+    async with IdMapper(session) as mapper:
+        await mapper.resolve("mal", "acme", ["5"])
+        acme.TABLE = {("mal", "5"): {"mal": "5", "acme": "A5"}}
+        assert await mapper.resolve("acme", "mal", ["A5"]) == {"A5": None}  # the other direction was never asked
+        assert await mapper.resolve("mal", "acme", ["5"]) == {"5": None}  # this one is still remembered as a miss

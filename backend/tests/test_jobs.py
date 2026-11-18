@@ -15,7 +15,7 @@ async def test_only_one_pending_sync_per_user():
 def test_scheduled_and_queued_tasks_are_registered():
     names = set(jobs.app.tasks)
     assert {
-        "anisync.jobs.daily_sync",
+        "anisync.jobs.sync_tick",
         "anisync.jobs.seed_ids",
         "anisync.jobs.sync_user",
         "anisync.jobs.push_entry",

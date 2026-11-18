@@ -6,7 +6,7 @@ Update this file at the end of every working session. Work the phases in order; 
 
 **2026-11-16**
 - Backend scaffold: models, Alembic initial migration, MAL/AniList/Kitsu clients, normalized model,
-  diff engine, ID mapper, sync orchestration, Procrastinate jobs (nightly + per-edit push), FastAPI auth + API.
+  diff engine, ID mapper, sync orchestration, Procrastinate jobs (daily + per-edit push), FastAPI auth + API.
 - Verified: 14 unit tests pass; migrations + job schema apply on real Postgres; API boots with in-process worker;
   ID-mapper merge logic against the DB; live public lookups (AniList MAL→AniList, Kitsu MAL→Kitsu);
   job queue + per-user queueing lock.
@@ -18,7 +18,8 @@ Update this file at the end of every working session. Work the phases in order; 
 - Answered the open questions: anime only, admin requirements, and donations-only funding (see Decisions).
 - Redesigned the canvas in Material 3 (dark mode, phone layouts, admin screens). Roles → permissions model (4.0).
 - **Phase 1 done** (tasks 1.0–1.7). Migrations `3f1a7c2b9d40`, `8c4d1e6a2b57`.
-- **Phase 2 done** (security hardening, see below). Migration `a7d3c9e15f02`. 211 backend tests.
+- **Phase 2 done** (security hardening, see below). Migration `a7d3c9e15f02`.
+- **Phase 3 done** (sync efficiency, see below). Migration `c5e2b8f94a13`. 268 backend tests.
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
 
@@ -166,23 +167,45 @@ real data yet, so dropping the old tables is fine.
 Not done on purpose (Phase 6): TLS, secure headers (HSTS/CSP) at the host or proxy, Sentry, dependency audit in CI
 (`pip-audit` / `npm audit`), and a ban check in `sessions.user_for` (arrives with 4.1).
 
-## Phase 3: Sync efficiency (provider request budget)  ← next
+## Phase 3: Sync efficiency (provider request budget)  ✔ done 2026-11-18
 
-Rough budget: AniList allows ~90 req/min (we use 25); MAL and Kitsu don't publish limits. The current design
-(full refetch of master + mirrors nightly, all at 04:00) tops out around 1–2k users.
+Before: every sync read the master and every mirror in full, all users at 04:00 (tops out around 1–2k users against
+AniList's ~90 req/min). Now a sync works on snapshots and a run where nothing changed costs **one small request**.
 
-- [ ] **3.1 Serve `/api/list` from snapshots**, not live provider calls; refresh snapshots during syncs and after edits.
-- [ ] **3.2 Incremental master reads.** MAL list sorted by `list_updated_at`, AniList `mediaList` sorted
-      `UPDATED_TIME_DESC`: page until older than the account's sync cursor.
-- [ ] **3.3 Diff mirrors against snapshots** (what we last wrote) instead of refetching; **weekly full reconcile**
-      catches edits made directly on mirror sites.
-- [ ] **3.4 Stagger the nightly sync.** Hourly periodic task syncs the users whose `hash(user_id) % 24` matches the hour.
-- [ ] **3.5 `sync_runs` retention** (e.g. keep 30 days / last 50 per user).
-- [ ] *Later, when running >1 worker:* shared Postgres token-bucket rate limiter, a queue per provider, and the
-      worker as its own process (`RUN_WORKER_IN_PROCESS=false`).
-- *Done when:* a no-change nightly sync costs ≤2 requests per linked account, measured in tests via respx call counts.
+- [x] **3.1 `/api/list` from snapshots.** The first read of a master fills its snapshot (one full read); after that the
+      list is served from the database. Edits through AniSync update the snapshot immediately (no read-back), removals
+      too, and `push_entry` updates the mirror's snapshot. `POST /api/list/refresh` (6 per 5 min per user) pulls in
+      edits made on the master's own site with one incremental request.
+- [x] **3.2 Incremental reads.** `fetch_list(since=cursor)` on providers with `incremental_reads` (MAL:
+      `sort=list_updated_at&limit=100`; AniList: flat `Page.mediaList` sorted `UPDATED_TIME_DESC`, 50 per page), stopping
+      at the first entry not **strictly** newer than the cursor. Strict, because a real AniList user has 5,000 entries
+      sharing one bulk-import timestamp; "at or after" would re-read all of them every night. Kitsu reads in full (not
+      verified to sort by update time; it is normally a mirror). `LinkedAccount.sync_cursor` = newest provider-side
+      update seen.
+- [x] **3.3 Plan from snapshots.** `plan_sync(master snapshot, mirror snapshot)`: mirrors aren't asked between full
+      reads, and a change that failed stays missing from the mirror's snapshot, so the next run retries it with no
+      extra bookkeeping. **Full reads** (`last_full_read_at`) happen on the first sync, weekly, when the master's provider
+      can't read incrementally, or when forced (`run_sync(full=True)`); they are the only way to notice removals and edits
+      made directly on a mirror's site (reported as `drifted` in the run summary). Also a **negative lookup cache**
+      (`lookup_misses`, 7 days) so titles no provider can translate aren't looked up again every night.
+- [x] **3.4 Staggered schedule.** `sync_tick` runs hourly (`SYNC_TICK_CRON`, replaces `DAILY_SYNC_CRON`) and syncs the
+      users whose `user_id % 24` equals the hour (UTC); `/api/me` returns `next_sync_at`. The trigger is now `scheduled`.
+- [x] **3.5 Retention.** The daily housekeeping job deletes sync runs older than 30 days and any beyond a user's newest 50.
+- [x] **Done when, measured** (`tests/test_request_budget.py`, real MAL/AniList/Kitsu clients, respx counts): a sync with
+      nothing changed = **1 request in total** (the bound was at most 2 per linked account); one edit = the read plus
+      1 write per mirror (Kitsu 2: it first looks for an existing entry); repeated unmappable titles = 0 extra requests.
+- [ ] *Later, when running more than one worker:* shared Postgres token-bucket rate limiter (limits are per process and
+      event loop now), a queue per provider, and the worker as its own process (`RUN_WORKER_IN_PROCESS=false`).
 
-## Phase 4: Admin
+Verified against the real AniList API (public lists, no key): the flat query is sorted newest first with `hasNextPage`,
+and on two real lists the incremental read returns exactly the same entries as the full read. That check found a real
+mismatch: entries **hidden from the status lists and in no custom list** appear in the flat query but not in
+`MediaListCollection`, so the incremental read now skips them (otherwise a full read would "remove" them every week).
+**Not verified:** MAL's `sort=list_updated_at` (needs a Client ID), paging on large real lists (mocks only), any write.
+Known limits: removals on the master's site are noticed only by a full read (weekly); an edit made on the master's site
+in the same second as the cursor can be missed until the next full read.
+
+## Phase 4: Admin  ← next
 
 Requirements (user, 2026-11-17): site and user statistics; status and logs of the daily/weekly syncs; look up a
 specific user, check their status, and ban them.
@@ -219,13 +242,13 @@ Stack notes (checked 2026-11-17, no stack change needed):
       (who, what, target, when, note). Banning revokes all the user's sessions (Phase 2.1), skips them in sync fan-out,
       cancels their queued jobs, and blocks sign-in and re-linking (also by provider account, so a new AniSync user
       can't be created from the same MAL/AniList/Kitsu account). Unban reverses it. Tokens stay encrypted; never shown.
-- [ ] **4.2 Sync logs.** `sync_runs` gets `trigger` values `nightly` | `weekly_reconcile` | `manual` | `edit`, and a
+- [ ] **4.2 Sync logs.** `sync_runs` `trigger` values become `scheduled` | `manual` | `edit` (a run's `read`/`drifted` fields already say whether it did a full reconcile), and a
       `sync_run_events` table (run_id, account_id, level, message, media ref, created_at) for per-entry failures,
       re-auth errors and rate-limit hits. Retention ties into 3.5 (keep ~30 days).
 - [ ] **4.3 Stats endpoints.** Users (total, new per day/week, active in last 7/30 days, banned); linked accounts per
       provider; accounts needing re-auth; master choice per provider; per day: runs ok/failed, entries changed,
       provider requests and 429s per provider (needs request counting in `ServiceClient._request`).
-- [ ] **4.4 Sync status page.** Last nightly and weekly runs: started/finished, users processed, failures, queue
+- [ ] **4.4 Sync status page.** The last scheduled runs and the weekly full reads: started/finished, users processed, failures, queue
       depth and stuck jobs (Procrastinate jobs table); drill into a run's events.
 - [ ] **4.5 User lookup page.** Search by AniSync id, display name, or provider username; show linked accounts
       (provider, username, token expiry/re-auth state, sync flags), recent runs with events, ban state and admin
@@ -233,7 +256,7 @@ Stack notes (checked 2026-11-17, no stack change needed):
 - [ ] **4.6 Provider health + kill switch.** Per provider: error rate, latency, 429s (from 4.3 counters). A
       `provider_settings` table (`paused`, `paused_reason`, optional rate-limit override) read at runtime: paused
       providers are skipped by sync and `push_entry` (jobs deferred, not failed) and the UI says so.
-- [ ] **4.7 Job controls.** Pause/resume the nightly and weekly syncs globally (flag in DB, checked by the periodic
+- [ ] **4.7 Job controls.** Pause/resume scheduled syncs globally (flag in DB, checked by the periodic
       tasks); retry failed jobs, cancel stuck jobs (Procrastinate job manager).
 - [ ] **4.8 Unmatched titles queue.** Entries the resolver couldn't map (recorded during sync, with counts of how
       many users have them). Admin links IDs by hand → writes `media_external_ids` rows marked `source=manual`, which

@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from typing import ClassVar
 
 from anisync.providers.base import (
@@ -71,6 +72,14 @@ class FakeClient(ProviderClient):
     REMOTE: ClassVar[dict[tuple[str, str], dict[str, ListEntry]]] = {}
     FAIL_ON: ClassVar[set[str]] = set()  # media ids whose save raises
     REJECT_TOKENS: ClassVar[bool] = False  # simulate a revoked token
+    REQUESTS: ClassVar[list[tuple[str, str]]] = []  # (provider id, "full" | "since" | "save" | "delete")
+    _clock: ClassVar[int] = 0
+
+    @classmethod
+    def stamp(cls) -> datetime:
+        """A strictly increasing 'server time', one second per call."""
+        cls._clock += 1
+        return datetime(2026, 11, 1, tzinfo=UTC) + timedelta(seconds=cls._clock)
 
     def _store(self) -> dict[str, ListEntry]:
         return FakeClient.REMOTE.setdefault((self.provider_id, self.remote_user_id or "1"), {})
@@ -78,21 +87,29 @@ class FakeClient(ProviderClient):
     async def whoami(self) -> RemoteUser:
         return RemoteUser(id=self.remote_user_id or "1", username=f"{self.provider_id}_user")
 
-    async def fetch_list(self) -> list[ListEntry]:
+    async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
+        FakeClient.REQUESTS.append((self.provider_id, "full" if since is None else "since"))
         if FakeClient.REJECT_TOKENS:
             raise ReauthRequired("revoked")
-        return list(self._store().values())
+        entries = list(self._store().values())
+        if since is not None:
+            entries = [e for e in entries if e.updated_at and e.updated_at > since]
+        return entries
 
     async def save_entry(self, entry: ListEntry) -> None:
         if entry.media_id in FakeClient.FAIL_ON:
             raise RuntimeError(f"cannot save {entry.media_id}")
-        self._store()[entry.media_id] = replace(entry, remote_entry_id=f"entry-{entry.media_id}")
+        FakeClient.REQUESTS.append((self.provider_id, "save"))
+        self._store()[entry.media_id] = replace(
+            entry, remote_entry_id=f"entry-{entry.media_id}", updated_at=FakeClient.stamp()
+        )
 
     async def delete_entry(self, media_id: str, remote_entry_id: str | None = None) -> None:
+        FakeClient.REQUESTS.append((self.provider_id, "delete"))
         self._store().pop(media_id, None)
 
 
-def register_fake(provider_id: str, score_step: int = 1, refresh=None) -> Provider:
+def register_fake(provider_id: str, score_step: int = 1, refresh=None, incremental: bool = False) -> Provider:
     client = type(f"Fake{provider_id}Client", (FakeClient,), {"provider_id": provider_id})
     return register(
         Provider(
@@ -104,6 +121,7 @@ def register_fake(provider_id: str, score_step: int = 1, refresh=None) -> Provid
             score_step=score_step,
             rate_limit=(1000, 1),
             client=client,
+            incremental_reads=incremental,
             refresh=refresh,
         )
     )
@@ -113,6 +131,7 @@ def reset_fakes() -> None:
     FakeClient.REMOTE = {}
     FakeClient.FAIL_ON = set()
     FakeClient.REJECT_TOKENS = False
+    FakeClient.REQUESTS = []
 
 
 def unregister_fakes() -> None:
