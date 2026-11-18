@@ -26,7 +26,7 @@ from anisync.providers.base import (
 from anisync.providers.registry import register
 
 API = "https://kitsu.app/api/edge"
-TOKEN_URL = "https://kitsu.app/api/oauth/token"
+TOKEN_URL = "https://kitsu.app/api/oauth/token"  # noqa: S105 (a URL, not a secret)
 JSONAPI = "application/vnd.api+json"
 
 TO_STATUS = {

@@ -26,7 +26,7 @@ from anisync.providers.registry import register
 
 API = "https://api.myanimelist.net/v2"
 AUTHORIZE_URL = "https://myanimelist.net/v1/oauth2/authorize"
-TOKEN_URL = "https://myanimelist.net/v1/oauth2/token"
+TOKEN_URL = "https://myanimelist.net/v1/oauth2/token"  # noqa: S105 (a URL, not a secret)
 
 TO_STATUS = {
     "watching": Status.WATCHING,

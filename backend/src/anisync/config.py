@@ -1,6 +1,9 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEV_SESSION_SECRET = "dev-only-change-me"  # noqa: S105 (a development default; production refuses it)
 
 
 class Settings(BaseSettings):
@@ -13,10 +16,12 @@ class Settings(BaseSettings):
     # OAuth redirect URIs are built from it: {public_url}/auth/{service}/callback
     public_url: str = "http://localhost:5173"
 
-    session_secret: str = "dev-only-change-me"
+    session_secret: str = DEV_SESSION_SECRET  # signs the OAuth state cookie and salts rate-limit keys
     # Fernet key used to encrypt provider tokens at rest. Generate with:
     #   uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     token_encryption_key: str = ""
+    # Comma-separated Fernet keys for rotation: the first encrypts, all decrypt (see crypto.py). Wins over the above.
+    token_encryption_keys: str = ""
 
     # Provider credentials (<PROVIDER>_CLIENT_ID / <PROVIDER>_CLIENT_SECRET) are read by the providers themselves,
     # see `providers.base.credentials`.
@@ -32,6 +37,23 @@ class Settings(BaseSettings):
     run_worker_in_process: bool = True
     # Cron expression (UTC) for the daily master -> mirrors sync.
     daily_sync_cron: str = "0 4 * * *"
+
+    @property
+    def is_production(self) -> bool:
+        """Served over HTTPS = a real deployment (local development runs on http://localhost)."""
+        return self.public_url.startswith("https://")
+
+    @model_validator(mode="after")
+    def _production_needs_real_secrets(self) -> "Settings":
+        if self.is_production:
+            problems = []
+            if self.session_secret == DEV_SESSION_SECRET or len(self.session_secret) < 32:
+                problems.append("SESSION_SECRET must be a random value of at least 32 characters")
+            if not (self.token_encryption_keys.strip() or self.token_encryption_key):
+                problems.append("TOKEN_ENCRYPTION_KEYS must be set (`anisync generate-key`)")
+            if problems:
+                raise ValueError("; ".join(problems))
+        return self
 
     @property
     def sqlalchemy_url(self) -> str:

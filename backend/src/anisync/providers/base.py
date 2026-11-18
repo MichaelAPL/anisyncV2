@@ -110,7 +110,7 @@ def quantize_score(score: int | None, step: int) -> int | None:
 class AuthKind(StrEnum):
     OAUTH_CODE = "oauth_code"  # redirect flow, authorization code
     OAUTH_PKCE_PLAIN = "oauth_pkce_plain"  # redirect flow, PKCE with the `plain` challenge method
-    PASSWORD = "password"  # the user types their credentials once; we exchange them for tokens
+    PASSWORD = "password"  # noqa: S105 (an enum value)  # the user types their credentials once; we exchange them for tokens
     API_KEY = "api_key"  # the user pastes a key (no provider uses this yet)
 
     @property

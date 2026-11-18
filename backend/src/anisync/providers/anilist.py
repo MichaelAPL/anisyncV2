@@ -27,7 +27,7 @@ from anisync.providers.registry import register
 
 GRAPHQL_URL = "https://graphql.anilist.co"
 AUTHORIZE_URL = "https://anilist.co/api/v2/oauth/authorize"
-TOKEN_URL = "https://anilist.co/api/v2/oauth/token"
+TOKEN_URL = "https://anilist.co/api/v2/oauth/token"  # noqa: S105 (a URL, not a secret)
 
 TO_STATUS = {
     "CURRENT": Status.WATCHING,

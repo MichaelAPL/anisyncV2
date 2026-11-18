@@ -30,6 +30,7 @@ from sqlalchemy import delete, exists, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from anisync import logs
 from anisync.config import get_settings
 from anisync.mapping import KnownTitle, existing_pairs
 from anisync.models import DatasetImport, Media, MediaExternalId
@@ -240,6 +241,5 @@ async def _main(argv: Sequence[str]) -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    logging.getLogger("httpx").setLevel(logging.WARNING)  # it would log the signed download URL
+    logs.configure()
     asyncio.run(_main(sys.argv[1:]))

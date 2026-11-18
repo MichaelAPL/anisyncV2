@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from anisync.engine import Plan, plan_sync
+from anisync.logs import redact
 from anisync.mapping import IdMapper
 from anisync.models import LinkedAccount, SyncRun, User
 from anisync.providers import get_provider
@@ -55,7 +56,7 @@ async def apply_plan(client: ProviderClient, plan: Plan) -> list[str]:
             raise
         except Exception as exc:  # keep going; one bad entry shouldn't block the rest
             log.warning("sync change failed: %s %s: %s", change.op, change.media_id, exc)
-            errors.append(f"{change.op} {change.media_id}: {exc}")
+            errors.append(f"{change.op} {change.media_id}: {redact(str(exc))[:300]}")  # shown to users and admins
     return errors
 
 
