@@ -1,12 +1,13 @@
 from datetime import date, datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from anisync import jobs, sync
+from anisync import jobs, sessions, sync
 from anisync.api.deps import CurrentUser, Session
-from anisync.models import LinkedAccount, SyncRun, User
+from anisync.api.schemas import OkOut
+from anisync.models import LinkedAccount, SyncRun, User, UserSession
 from anisync.providers.base import ListEntry, ReauthRequired, Status
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -106,6 +107,48 @@ async def unlink_account(account_id: int, user: CurrentUser, session: Session) -
     user.accounts.remove(account)
     await session.commit()
     return _me(user)
+
+
+# ---- sessions -----------------------------------------------------------------------------------
+
+
+class SessionOut(BaseModel):
+    id: int
+    created_at: datetime
+    last_seen_at: datetime
+    user_agent: str
+    current: bool
+
+
+@router.get("/sessions")
+async def list_sessions(request: Request, user: CurrentUser, session: Session) -> list[SessionOut]:
+    """The devices signed in to this account (the session token itself is never exposed)."""
+    token = request.cookies.get(sessions.COOKIE)
+    current = sessions.hash_token(token) if token else None
+    rows = await session.scalars(
+        select(UserSession).where(UserSession.user_id == user.id).order_by(UserSession.last_seen_at.desc())
+    )
+    return [
+        SessionOut(
+            id=r.id,
+            created_at=r.created_at,
+            last_seen_at=r.last_seen_at,
+            user_agent=r.user_agent,
+            current=r.token_hash == current,
+        )
+        for r in rows
+    ]
+
+
+@router.delete("/sessions/{session_id}")
+async def revoke_session(session_id: int, user: CurrentUser, session: Session) -> OkOut:
+    result = await session.execute(
+        delete(UserSession).where(UserSession.id == session_id, UserSession.user_id == user.id)
+    )
+    if not result.rowcount:
+        raise HTTPException(404, "Session not found")
+    await session.commit()
+    return OkOut()
 
 
 # ---- master list --------------------------------------------------------------------------

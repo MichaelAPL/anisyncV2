@@ -6,21 +6,41 @@ account you link creates your AniSync user (and becomes your master list). Provi
 """
 
 import secrets
+from datetime import timedelta
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from anisync import ratelimit, sessions
 from anisync.api.deps import CurrentUser, OptionalUser, Session
+from anisync.api.schemas import OkOut
 from anisync.config import get_settings
 from anisync.models import LinkedAccount, User
 from anisync.providers import UnknownProvider, get_provider
 from anisync.providers.base import AuthKind, Provider, TokenSet
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# The OAuth state and PKCE verifier live in a short-lived signed cookie between the redirect and the callback.
+OAUTH_COOKIE = "anisync_oauth"
+OAUTH_MAX_AGE = 600
+
+SIGN_IN_LIMIT = ratelimit.per_ip("oauth", limit=30, window=timedelta(minutes=15))
+PASSWORD_IP_LIMIT = ratelimit.per_ip("password-link", limit=5, window=timedelta(minutes=15))
+PASSWORD_USER_LIMIT = ratelimit.per_user("password-link", limit=5, window=timedelta(minutes=15))
+
+
+def _oauth_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(get_settings().session_secret, salt="anisync-oauth")
+
+
+def _secure_cookies() -> bool:
+    return get_settings().public_url.startswith("https://")
 
 
 def _provider(provider_id: str) -> Provider:
@@ -39,18 +59,27 @@ def _frontend(path: str, **params: str) -> RedirectResponse:
     return RedirectResponse(f"{get_settings().public_url}{path}{query}")
 
 
-@router.get("/{provider_id}/login")
-async def login(provider_id: str, request: Request) -> RedirectResponse:
+@router.get("/{provider_id}/login", response_class=RedirectResponse, status_code=307, dependencies=[SIGN_IN_LIMIT])
+async def login(provider_id: str) -> RedirectResponse:
     provider = _provider(provider_id)
     if not provider.can_sign_in or provider.authorize_url is None:
         raise HTTPException(400, f"{provider.name} does not support OAuth sign-in")
     state = secrets.token_urlsafe(24)
     verifier = secrets.token_urlsafe(64)[:128] if provider.auth_kind == AuthKind.OAUTH_PKCE_PLAIN else None
-    request.session["oauth"] = {"provider": provider.id, "state": state, "verifier": verifier}
-    return RedirectResponse(provider.authorize_url(state, verifier, _redirect_uri(provider)))
+    response = RedirectResponse(provider.authorize_url(state, verifier, _redirect_uri(provider)))
+    response.set_cookie(
+        OAUTH_COOKIE,
+        _oauth_serializer().dumps({"provider": provider.id, "state": state, "verifier": verifier}),
+        max_age=OAUTH_MAX_AGE,
+        httponly=True,
+        samesite="lax",  # must accompany the top-level redirect back from the provider
+        secure=_secure_cookies(),
+        path="/auth",
+    )
+    return response
 
 
-@router.get("/{provider_id}/callback")
+@router.get("/{provider_id}/callback", response_class=RedirectResponse, status_code=307, dependencies=[SIGN_IN_LIMIT])
 async def callback(
     provider_id: str,
     request: Request,
@@ -59,27 +88,41 @@ async def callback(
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
-):
+) -> RedirectResponse:
     provider = _provider(provider_id)
-    oauth = request.session.pop("oauth", None)
+    response = _frontend("/")
+    response.delete_cookie(OAUTH_COOKIE, path="/auth")  # single use, whatever happens next
+    try:
+        oauth = _oauth_serializer().loads(request.cookies.get(OAUTH_COOKIE, ""), max_age=OAUTH_MAX_AGE)
+    except BadSignature:
+        oauth = None
     if error or not code:
-        return _frontend("/", error=error or "missing_code")
+        return _failed(response, error or "missing_code")
     if not oauth or oauth["provider"] != provider.id or not secrets.compare_digest(oauth["state"], state or ""):
-        return _frontend("/", error="invalid_state")
+        return _failed(response, "invalid_state")
     if provider.exchange_code is None:
         raise HTTPException(400, f"{provider.name} does not support OAuth sign-in")
 
     try:
         tokens = await provider.exchange_code(code, oauth["verifier"], _redirect_uri(provider))
     except httpx.HTTPError:
-        return _frontend("/", error="token_exchange_failed")
+        return _failed(response, "token_exchange_failed")
 
     try:
         user = await _link_account(session, user, provider, tokens)
     except PermissionError:
-        return _frontend("/dashboard", error="account_already_linked")
-    request.session["user_id"] = user.id
-    return _frontend("/dashboard")
+        return _failed(response, "account_already_linked", path="/dashboard")
+    token = await sessions.start(
+        session, user.id, request.headers.get("user-agent"), replacing=request.cookies.get(sessions.COOKIE)
+    )
+    response.headers["location"] = f"{get_settings().public_url}/dashboard"
+    sessions.set_cookie(response, token)
+    return response
+
+
+def _failed(response: RedirectResponse, error: str, path: str = "/") -> RedirectResponse:
+    response.headers["location"] = f"{get_settings().public_url}{path}?{urlencode({'error': error})}"
+    return response
 
 
 class PasswordLogin(BaseModel):
@@ -87,8 +130,8 @@ class PasswordLogin(BaseModel):
     password: str
 
 
-@router.post("/{provider_id}/password")
-async def link_with_password(provider_id: str, body: PasswordLogin, session: Session, user: CurrentUser) -> dict:
+@router.post("/{provider_id}/password", dependencies=[PASSWORD_IP_LIMIT, PASSWORD_USER_LIMIT])
+async def link_with_password(provider_id: str, body: PasswordLogin, session: Session, user: CurrentUser) -> OkOut:
     provider = _provider(provider_id)
     if provider.auth_kind != AuthKind.PASSWORD or provider.password_login is None:
         raise HTTPException(400, f"{provider.name} is not linked with a username and password")
@@ -100,13 +143,23 @@ async def link_with_password(provider_id: str, body: PasswordLogin, session: Ses
         await _link_account(session, user, provider, tokens)
     except PermissionError as exc:
         raise HTTPException(409, f"That {provider.name} account is linked to another AniSync user") from exc
-    return {"ok": True}
+    return OkOut()
 
 
 @router.post("/logout")
-async def logout(request: Request) -> dict:
-    request.session.clear()
-    return {"ok": True}
+async def logout(request: Request, response: Response, session: Session) -> OkOut:
+    if token := request.cookies.get(sessions.COOKIE):
+        await sessions.end(session, token)
+    sessions.clear_cookie(response)
+    return OkOut()
+
+
+@router.post("/logout-all")
+async def logout_everywhere(response: Response, session: Session, user: CurrentUser) -> OkOut:
+    """Sign out every device, this one included."""
+    await sessions.end_all(session, user.id)
+    sessions.clear_cookie(response)
+    return OkOut()
 
 
 async def _link_account(session: Session, user: User | None, provider: Provider, tokens: TokenSet) -> User:

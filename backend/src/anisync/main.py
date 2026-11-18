@@ -4,11 +4,11 @@ import logging
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
-from starlette.middleware.sessions import SessionMiddleware
 
 from anisync import jobs
 from anisync.api import auth, routes
 from anisync.config import get_settings
+from anisync.security import CsrfMiddleware, RequestIdMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)  # request URLs can carry credentials
@@ -31,12 +31,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="AniSync", lifespan=lifespan)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=settings.session_secret,
-    same_site="lax",
-    https_only=settings.public_url.startswith("https://"),
-    max_age=60 * 60 * 24 * 30,
-)
+# Added last = outermost: every response (including a CSRF refusal) carries a request ID.
+app.add_middleware(CsrfMiddleware, allowed_origin=settings.public_url)
+app.add_middleware(RequestIdMiddleware)
 app.include_router(auth.router)
 app.include_router(routes.router)

@@ -11,7 +11,7 @@ import httpx
 from procrastinate import App, PsycopgConnector, RetryStrategy
 from procrastinate.exceptions import AlreadyEnqueued
 
-from anisync import seed, sync
+from anisync import ratelimit, seed, sessions, sync
 from anisync.config import get_settings
 from anisync.db import SessionLocal
 from anisync.providers.base import ListEntry, RateLimited
@@ -36,6 +36,16 @@ async def daily_sync(timestamp: int) -> None:
         user_ids = await sync.users_with_master(session)
     for user_id in user_ids:
         await enqueue_user_sync(user_id, "daily")
+
+
+@app.periodic(cron="30 3 * * *", periodic_id="housekeeping")
+@app.task(queue="maintenance", queueing_lock="housekeeping")
+async def housekeeping(timestamp: int) -> None:
+    """Delete expired sessions and old rate-limit attempts."""
+    async with SessionLocal() as session:
+        expired = await sessions.purge_expired(session)
+        attempts = await ratelimit.purge_old(session)
+    log.info("housekeeping: %s expired sessions, %s old rate-limit rows removed", expired, attempts)
 
 
 @app.periodic(cron=settings.id_dataset_cron, periodic_id="seed-ids")

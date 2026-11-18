@@ -113,7 +113,12 @@ async def client(session):
         yield session
 
     app.dependency_overrides[get_session] = override
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+    # Like a browser on our own site: it sends Origin with every request (see the CSRF middleware).
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+        headers={"Origin": "http://localhost:5173"},
+    ) as c:
         yield c
     app.dependency_overrides.clear()
 
