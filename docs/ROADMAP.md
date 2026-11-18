@@ -115,7 +115,25 @@ real data yet, so dropping the old tables is fine.
 - [ ] **2.3 CSRF.** Middleware rejecting state-changing requests whose `Origin`/`Referer` isn't `PUBLIC_URL`.
 - [ ] **2.4 Generic auth routes** driven by `auth_kind` (`/auth/{provider}/login|callback`, `/auth/{provider}/password`).
       Evaluate Authlib for the OAuth client (it must support MAL's PKCE `plain`); adopt it only if it shrinks the code.
-- [ ] Tests for session lifecycle, revocation, key rotation, CSRF rejection.
+- [ ] **2.5 SQL injection guard.** Already safe: every query uses SQLAlchemy bound parameters and there is no raw SQL
+      (checked 2026-11-18). Lock it in: enable ruff's `S` (flake8-bandit) rules, including S608, so CI fails on
+      SQL built from strings. Rule: never `text()` / `exec_driver_sql` with interpolated values.
+- [ ] **2.6 Keep secrets out of logs.** Uvicorn's access log records full URLs, including OAuth callbacks
+      (`?code=…&state=…`): add a logging filter that redacts `code`, `state`, `token`, `access_token`, `password`
+      query values. One `redact()` helper for exception text logged from provider calls (`sync.py`); never log
+      request headers or bodies. Test: a callback request and a failing provider call leave no secrets in captured logs.
+- [ ] **2.7 Rate-limit credential endpoints.** `POST /auth/kitsu` (could otherwise be used to test stolen Kitsu
+      passwords) and the OAuth login/callback routes: per IP and per user, e.g. 5 attempts / 15 min, in Postgres so it
+      works across processes. Return 429 with `Retry-After`.
+- [ ] **2.8 Explicit response schemas.** Every endpoint declares a pydantic `response_model` (list, preview, runs,
+      entry endpoints still return raw dicts). Never return ORM objects. Mandatory for `/api/admin/*`, which handles
+      other users' data. Token fields never appear in any schema.
+- [ ] **2.9 Safe errors.** Debug off in production; one exception handler turns unexpected errors into a generic 500
+      with a request ID (also logged, and sent to Sentry in Phase 6), never a stack trace or SQL in the response.
+- [ ] **2.10 Ownership tests.** For every user-scoped endpoint, a second user tries to read/change the first user's
+      accounts, list entries, runs and preview and gets 404. A test walks the router so new endpoints can't be added
+      without an ownership or permission check (pairs with the 4.0 permission test).
+- [ ] Tests for session lifecycle, revocation, key rotation, CSRF rejection, log redaction, rate limits.
 
 ## Phase 3: Sync efficiency (provider request budget)
 
@@ -239,6 +257,9 @@ Stack notes (checked 2026-11-17, no stack change needed):
 - [ ] Register MAL + AniList apps; end-to-end test sign-in, linking, preview, apply on throwaway accounts.
 - [ ] Dockerfile; Railway (or Cloudflare Pages + Neon + Render) config; production `PUBLIC_URL`, secure cookies,
       secrets in the host's secret store.
+- [ ] Production data protection: Postgres reachable only from the app (private network, no public port), TLS to
+      the DB if the host offers it, encrypted automated backups with tested restore, least-privilege DB user for the
+      app (no superuser), and access to the hosting dashboard limited to 2FA-protected accounts.
 - [ ] Re-check provider docs/changelogs and API terms before launch (MAL API agreement, AniList terms of use, Kitsu).
       Specific checks:
       - MAL §3(c) forbids storing MAL content "that consists of personal information". List snapshots (Phase 1.6/3)
