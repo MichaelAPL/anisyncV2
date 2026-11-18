@@ -6,7 +6,7 @@ from sqlalchemy import delete, select
 
 from anisync import jobs, sessions, sync
 from anisync.api.deps import CurrentUser, Session
-from anisync.api.schemas import OkOut
+from anisync.api.schemas import ListEntryOut, MirrorResultOut, OkOut, QueuedOut, SavedEntryOut, SyncRunOut
 from anisync.models import LinkedAccount, SyncRun, User, UserSession
 from anisync.providers.base import ListEntry, ReauthRequired, Status
 
@@ -63,8 +63,8 @@ def _account(user: User, account_id: int) -> LinkedAccount:
 
 
 @router.get("/health")
-async def health() -> dict:
-    return {"ok": True}
+async def health() -> OkOut:
+    return OkOut()
 
 
 @router.get("/me")
@@ -164,10 +164,10 @@ async def _master_client(user: User, session: Session):
 
 
 @router.get("/list")
-async def get_list(user: CurrentUser, session: Session) -> list[dict]:
+async def get_list(user: CurrentUser, session: Session) -> list[ListEntryOut]:
     client = await _master_client(user, session)
     entries = await client.fetch_list()
-    return [e.to_dict() for e in sorted(entries, key=lambda e: e.title.lower())]
+    return [ListEntryOut.model_validate(e) for e in sorted(entries, key=lambda e: e.title.lower())]
 
 
 class EntryIn(BaseModel):
@@ -180,7 +180,7 @@ class EntryIn(BaseModel):
 
 
 @router.put("/list/{media_id}")
-async def save_entry(media_id: str, body: EntryIn, user: CurrentUser, session: Session) -> dict:
+async def save_entry(media_id: str, body: EntryIn, user: CurrentUser, session: Session) -> SavedEntryOut:
     """Edit the master list, then push the change to every mirror in the background."""
     client = await _master_client(user, session)
     entry = ListEntry(media_id=media_id, external_ids={user.master.provider: media_id}, **body.model_dump())
@@ -192,33 +192,33 @@ async def save_entry(media_id: str, body: EntryIn, user: CurrentUser, session: S
             master_media_id=media_id,
             entry=entry.to_dict(),
         )
-    return {"ok": True, "queued_mirrors": len(user.mirrors)}
+    return SavedEntryOut(queued_mirrors=len(user.mirrors))
 
 
 @router.delete("/list/{media_id}")
-async def delete_entry(media_id: str, user: CurrentUser, session: Session) -> dict:
+async def delete_entry(media_id: str, user: CurrentUser, session: Session) -> OkOut:
     client = await _master_client(user, session)
     await client.delete_entry(media_id)
     for mirror in user.mirrors:
         await jobs.push_entry.defer_async(
             account_id=mirror.id, master_provider=user.master.provider, master_media_id=media_id, entry=None
         )
-    return {"ok": True}
+    return OkOut()
 
 
 # ---- sync ---------------------------------------------------------------------------------
 
 
 @router.post("/sync")
-async def trigger_sync(user: CurrentUser) -> dict:
+async def trigger_sync(user: CurrentUser) -> QueuedOut:
     if user.master is None:
         raise HTTPException(400, "Pick a master list first")
     queued = await jobs.enqueue_user_sync(user.id, "manual")
-    return {"queued": queued}
+    return QueuedOut(queued=queued)
 
 
-@router.get("/sync/preview")
-async def preview_sync(user: CurrentUser, session: Session) -> dict:
+@router.get("/sync/preview", response_model_exclude_none=True)
+async def preview_sync(user: CurrentUser, session: Session) -> dict[str, MirrorResultOut]:
     """Dry run: what a sync would change on each mirror, without writing anything."""
     if user.master is None:
         raise HTTPException(400, "Pick a master list first")
@@ -228,19 +228,9 @@ async def preview_sync(user: CurrentUser, session: Session) -> dict:
         raise HTTPException(409, str(exc)) from exc
 
 
-@router.get("/sync/runs")
-async def sync_runs(user: CurrentUser, session: Session) -> list[dict]:
+@router.get("/sync/runs", response_model_exclude_none=True)
+async def sync_runs(user: CurrentUser, session: Session) -> list[SyncRunOut]:
     runs = await session.scalars(
         select(SyncRun).where(SyncRun.user_id == user.id).order_by(SyncRun.started_at.desc()).limit(10)
     )
-    return [
-        {
-            "id": r.id,
-            "trigger": r.trigger,
-            "status": r.status,
-            "summary": r.summary,
-            "started_at": r.started_at,
-            "finished_at": r.finished_at,
-        }
-        for r in runs
-    ]
+    return [SyncRunOut.model_validate(r) for r in runs]

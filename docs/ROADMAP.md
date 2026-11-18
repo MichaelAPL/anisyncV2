@@ -17,7 +17,8 @@ Update this file at the end of every working session. Work the phases in order; 
 - Reviewed security, capacity and extensibility, and agreed the plan below.
 - Answered the open questions: anime only, admin requirements, and donations-only funding (see Decisions).
 - Redesigned the canvas in Material 3 (dark mode, phone layouts, admin screens). Roles → permissions model (4.0).
-- **Phase 1 done** (tasks 1.0–1.7). 107 backend tests; migrations `3f1a7c2b9d40` and `8c4d1e6a2b57`.
+- **Phase 1 done** (tasks 1.0–1.7). Migrations `3f1a7c2b9d40`, `8c4d1e6a2b57`.
+- **Phase 2 done** (security hardening, see below). Migration `a7d3c9e15f02`. 211 backend tests.
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
 
@@ -126,36 +127,46 @@ real data yet, so dropping the old tables is fine.
         titles: 97% MAL↔AniList, 75% to Kitsu (Kitsu's own mappings lag), the rest are looked up once and learned.
 - [x] Tests: registry, resolver, seeding parser and import, models, migrations up/down, auth/API flows, engine properties.
 
-## Phase 2: Security hardening  ← next
+## Phase 2: Security hardening  ✔ done 2026-11-18
 
-- [ ] **2.1 Server-side sessions.** `sessions(id, token_hash sha256, user_id, created_at, last_seen_at, expires_at,
-      user_agent)`. The cookie holds a random token; rotate on login; `POST /auth/logout-all`. The OAuth state/PKCE
-      verifier can stay in a short-lived signed cookie. Replaces Starlette `SessionMiddleware` for auth.
-- [ ] **2.2 Key rotation.** `TOKEN_ENCRYPTION_KEYS=new,old` → `MultiFernet`; CLI command `anisync rotate-keys`
-      re-encrypts all tokens. Keep accepting single `TOKEN_ENCRYPTION_KEY` for dev.
-- [ ] **2.3 CSRF.** Middleware rejecting state-changing requests whose `Origin`/`Referer` isn't `PUBLIC_URL`.
-- [ ] **2.4 Generic auth routes** (done in Phase 1.1). Still to do: evaluate Authlib for the OAuth client (it must support MAL's PKCE `plain`); adopt it only if it shrinks the code.
-- [ ] **2.5 SQL injection guard.** Already safe: every query uses SQLAlchemy bound parameters and there is no raw SQL
-      (checked 2026-11-18). Lock it in: enable ruff's `S` (flake8-bandit) rules, including S608, so CI fails on
-      SQL built from strings. Rule: never `text()` / `exec_driver_sql` with interpolated values.
-- [ ] **2.6 Keep secrets out of logs.** Uvicorn's access log records full URLs, including OAuth callbacks
-      (`?code=…&state=…`): add a logging filter that redacts `code`, `state`, `token`, `access_token`, `password`
-      query values. One `redact()` helper for exception text logged from provider calls (`sync.py`); never log
-      request headers or bodies. Test: a callback request and a failing provider call leave no secrets in captured logs.
-- [ ] **2.7 Rate-limit credential endpoints.** `POST /auth/kitsu` (could otherwise be used to test stolen Kitsu
-      passwords) and the OAuth login/callback routes: per IP and per user, e.g. 5 attempts / 15 min, in Postgres so it
-      works across processes. Return 429 with `Retry-After`.
-- [ ] **2.8 Explicit response schemas.** Every endpoint declares a pydantic `response_model` (list, preview, runs,
-      entry endpoints still return raw dicts). Never return ORM objects. Mandatory for `/api/admin/*`, which handles
-      other users' data. Token fields never appear in any schema.
-- [ ] **2.9 Safe errors.** Debug off in production; one exception handler turns unexpected errors into a generic 500
-      with a request ID (also logged, and sent to Sentry in Phase 6), never a stack trace or SQL in the response.
-- [ ] **2.10 Ownership tests.** For every user-scoped endpoint, a second user tries to read/change the first user's
-      accounts, list entries, runs and preview and gets 404. A test walks the router so new endpoints can't be added
-      without an ownership or permission check (pairs with the 4.0 permission test).
-- [ ] Tests for session lifecycle, revocation, key rotation, CSRF rejection, log redaction, rate limits.
+- [x] **2.1 Server-side sessions.** `sessions` table (SHA-256 of the token only), 30-day sliding expiry, new session on
+      every sign-in with the old one revoked, `POST /auth/logout` and `/auth/logout-all`, `GET /api/sessions`,
+      `DELETE /api/sessions/{id}`, daily purge job. The OAuth state/PKCE verifier live in a short-lived (10 min) signed
+      cookie scoped to `/auth`. Starlette's `SessionMiddleware` is gone. Cookies: HttpOnly, SameSite=Lax, Secure on HTTPS.
+- [x] **2.2 Key rotation.** `TOKEN_ENCRYPTION_KEYS=new,old` (`MultiFernet`; a single `TOKEN_ENCRYPTION_KEY` still works).
+      `uv run anisync generate-key` / `rotate-keys` (idempotent; exits 1 and keeps going if some tokens are unreadable).
+      Procedure: put the new key first, deploy, run `rotate-keys`, then drop the old key.
+- [x] **2.3 CSRF.** Middleware: unsafe methods need an `Origin` (else `Referer`) equal to `PUBLIC_URL`; a request with a
+      session cookie and no origin information is refused too. SameSite=Lax is the second layer.
+- [x] **2.4 Generic auth routes** (Phase 1.1) and the **Authlib evaluation: not adopted.** Its Starlette client keeps the
+      OAuth state in `request.session` (it needs `SessionMiddleware`, which 2.1 removed), and I found nothing showing
+      support for MAL's PKCE `plain` (examples use S256; secondary sources only, the official docs page moved).
+      Our flow is ~60 lines for any number of providers; revisit only if a provider needs something we don't have.
+- [x] **2.5 SQL injection guard.** ruff `S` rules on (S608 and friends); tests prove the linter rejects SQL built with
+      f-strings, `%` and `+`, and that `src/` has none. Rule: never interpolate values into `text()` / `execute()`.
+- [x] **2.6 Secrets out of logs.** `logs.py`: redacts `code`, `state`, `*token`, `password`, `secret`, `sig`, `jwt`,
+      bearer headers, JSON token fields and our own encrypted tokens, on uvicorn's access log and every log handler
+      (including exception text). Errors stored in sync summaries (visible to users/admins) are redacted too.
+      Verified against a real running uvicorn. httpx's own request logging is off.
+- [x] **2.7 Rate limits.** Postgres-backed (`rate_limit_hits`, advisory lock per key): password linking 5 / 15 min per
+      hashed IP and per user, OAuth login/callback 30 / 15 min per IP; 429 with `Retry-After`; refused attempts aren't
+      recorded; purged daily. Behind a proxy run uvicorn with `--proxy-headers --forwarded-allow-ips=<proxy>`.
+- [x] **2.8 Explicit response schemas.** Every route declares one (`api/schemas.py`); a test walks the router and fails
+      for any route without a schema, and checks that no response schema has a token/secret/password/hash/cookie field.
+- [x] **2.9 Safe errors.** Unexpected errors return `{"detail": "Internal server error", "request_id": …}` (also the
+      `X-Request-ID` header and the log line; Sentry joins in Phase 6). No `/docs` or `/openapi.json` in production.
+      Production (HTTPS `PUBLIC_URL`) refuses to start without a strong `SESSION_SECRET` and an encryption key.
+- [x] **2.10 Ownership tests.** Two real users: every cross-user read/write on accounts, sessions, runs, preview and list
+      is 404 or empty and changes nothing. A router walk requires `require_user` on every route that isn't on an explicit
+      public list (and fails if the walk finds too few routes; FastAPI 0.163 hides included routes behind
+      `_IncludedRouter`, which an earlier version of this test missed). Pair with the 4.0 permission test.
+- [x] Tests: sessions, CSRF, rate limits, crypto/rotation, log redaction, hardening, contract, ownership, API routes,
+      sign-in failure paths. 211 backend tests, 91% coverage.
 
-## Phase 3: Sync efficiency (provider request budget)
+Not done on purpose (Phase 6): TLS, secure headers (HSTS/CSP) at the host or proxy, Sentry, dependency audit in CI
+(`pip-audit` / `npm audit`), and a ban check in `sessions.user_for` (arrives with 4.1).
+
+## Phase 3: Sync efficiency (provider request budget)  ← next
 
 Rough budget: AniList allows ~90 req/min (we use 25); MAL and Kitsu don't publish limits. The current design
 (full refetch of master + mirrors nightly, all at 04:00) tops out around 1–2k users.

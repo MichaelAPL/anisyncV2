@@ -15,8 +15,8 @@ Current progress and next steps: **`docs/ROADMAP.md`** (read it first, keep it u
   2. Editing the list *in AniSync* writes to the master service immediately, then queues one
      `push_entry` job per mirror.
 - Edits made directly on a mirror's website are overwritten at the next nightly sync (shown to users).
-- No AniSync passwords: users sign in with MAL or AniList OAuth; the first linked account creates the
-  user and becomes master. Kitsu is linked afterwards (password grant, see below).
+- No AniSync passwords: users sign in with a redirect-flow provider (OAuth); the first linked account creates the
+  user and becomes master. Credential-only providers (Kitsu) are linked afterwards, once signed in.
 - Mirror options: `sync_enabled`, `prune_missing` (delete mirror entries not on master; off by default).
 - Dry-run preview (`GET /api/sync/preview`) before applying the first sync.
 - **Anime only** (manga out of scope).
@@ -57,6 +57,9 @@ Current progress and next steps: **`docs/ROADMAP.md`** (read it first, keep it u
   (`learn_from`), then remote lookups by providers that declare `lookup_from`. Use as `async with IdMapper(session)`.
 - `engine.py`: **pure** diff (`plan_sync`): no I/O, unit + property tested.
 - `sync.py`: orchestration (token refresh via the provider's `refresh` hook, run plans, `push_entry`). `jobs.py`: Procrastinate tasks.
+- `sessions.py` (server-side browser sessions, token hash only), `security.py` (CSRF + request-ID middleware),
+  `ratelimit.py` (Postgres-backed), `logs.py` (secret redaction), `crypto.py` (`TOKEN_ENCRYPTION_KEYS`, rotation),
+  `cli.py` (`uv run anisync generate-key | rotate-keys | seed`).
 - `api/auth.py`: generic routes driven by `auth_kind`: `GET /auth/{provider}/login|callback` (redirect providers),
   `POST /auth/{provider}/password` (credential providers, needs a signed-in user), `POST /auth/logout`.
   `api/routes.py`: `/api/*` JSON endpoints.
@@ -100,6 +103,18 @@ cd ../frontend && npm install && npm run dev      # http://localhost:5173
 
 OAuth redirect URIs (register with each redirect-flow provider): `http://localhost:5173/auth/<provider id>/callback`
 (e.g. `mal`, `anilist`).
+
+## Security rules (Phase 2; tests enforce most of them)
+
+- Every route needs `CurrentUser` unless it is on the public list in `tests/test_api_contract.py`; every route declares a
+  pydantic response schema (`api/schemas.py`), never raw dicts or ORM objects, and no schema may carry token/secret/
+  password/hash/cookie fields. Scope every query to `user.id`; another user's resource is a 404.
+- No SQL built from strings (ruff `S608`). Never log request bodies/headers; logs pass through `logs.redact`.
+- Browser auth = `anisync_session` cookie (random token, hash stored, HttpOnly, SameSite=Lax). State-changing requests
+  must carry an `Origin` equal to `PUBLIC_URL` (the CSRF middleware); the test client sends one.
+- Rate-limit anything that accepts credentials (`ratelimit.per_ip` / `per_user`). Production (HTTPS `PUBLIC_URL`) refuses
+  weak `SESSION_SECRET` or missing encryption keys. Key rotation procedure: ROADMAP Phase 2.2.
+- If the route walk in tests finds no routes, the test fails on purpose (FastAPI hides included routes in wrappers).
 
 ## Conventions
 
