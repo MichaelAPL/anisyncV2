@@ -7,30 +7,13 @@ import respx
 
 from anisync.services import anilist, kitsu, mal
 from anisync.services.base import ListEntry, ReauthRequired, Status
+from tests.helpers import load_fixture
 
 
 @respx.mock
 async def test_mal_fetch_and_save():
     respx.get(f"{mal.API}/users/@me/animelist").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "data": [
-                    {
-                        "node": {"id": 1, "title": "Cowboy Bebop", "num_episodes": 26},
-                        "list_status": {
-                            "status": "plan_to_watch",
-                            "score": 9,
-                            "num_episodes_watched": 0,
-                            "is_rewatching": False,
-                            "start_date": "2021-04",
-                            "updated_at": "2022-01-01T00:00:00+00:00",
-                        },
-                    }
-                ],
-                "paging": {},
-            },
-        )
+        return_value=httpx.Response(200, json=load_fixture("mal/animelist.json"))
     )
     route = respx.patch(f"{mal.API}/anime/1/my_list_status").mock(return_value=httpx.Response(200, json={}))
     client = mal.MalClient("tok")
@@ -45,21 +28,8 @@ async def test_mal_fetch_and_save():
 
 @respx.mock
 async def test_anilist_fetch_dedupes_and_maps_repeating():
-    e = {
-        "id": 7,
-        "mediaId": 1,
-        "status": "REPEATING",
-        "progress": 4,
-        "updatedAt": 1700000000,
-        "score": 85,
-        "startedAt": {"year": 2020, "month": 5, "day": None},
-        "completedAt": {"year": 2020, "month": 6, "day": 1},
-        "media": {"idMal": 1, "episodes": 26, "title": {"userPreferred": "Bebop"}, "coverImage": None},
-    }
     respx.post(anilist.GRAPHQL_URL).mock(
-        return_value=httpx.Response(
-            200, json={"data": {"MediaListCollection": {"lists": [{"entries": [e]}, {"entries": [e]}]}}}
-        )
+        return_value=httpx.Response(200, json=load_fixture("anilist/list_collection.json"))
     )
     [entry] = await anilist.AniListClient("tok", "42").fetch_list()
     assert entry.status == Status.WATCHING and entry.rewatching
@@ -80,40 +50,7 @@ async def test_anilist_save_sends_repeating():
 @respx.mock
 async def test_kitsu_fetch_reads_mappings_and_creates_entry():
     respx.get(f"{kitsu.API}/library-entries", params={"filter[kind]": "anime"}).mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "data": [
-                    {
-                        "id": "900",
-                        "attributes": {
-                            "status": "completed",
-                            "progress": 26,
-                            "ratingTwenty": 17,
-                            "reconsuming": False,
-                            "startedAt": "2020-01-02T00:00:00.000Z",
-                            "finishedAt": None,
-                            "updatedAt": "2022-01-01T00:00:00.000Z",
-                        },
-                        "relationships": {"anime": {"data": {"type": "anime", "id": "1"}}},
-                    }
-                ],
-                "included": [
-                    {
-                        "type": "anime",
-                        "id": "1",
-                        "attributes": {"canonicalTitle": "Cowboy Bebop", "episodeCount": 26},
-                        "relationships": {"mappings": {"data": [{"type": "mappings", "id": "m1"}]}},
-                    },
-                    {
-                        "type": "mappings",
-                        "id": "m1",
-                        "attributes": {"externalSite": "myanimelist/anime", "externalId": "1"},
-                    },
-                ],
-                "links": {},
-            },
-        )
+        return_value=httpx.Response(200, json=load_fixture("kitsu/library_entries.json"))
     )
     client = kitsu.KitsuClient("tok", "55")
     [e] = await client.fetch_list()

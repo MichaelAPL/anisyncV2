@@ -1,0 +1,23 @@
+{
+  "data": [
+    {
+      "node": {
+        "id": 1,
+        "title": "Cowboy Bebop",
+        "num_episodes": 26,
+        "main_picture": {
+          "medium": "https://cdn.example/mal/1.jpg"
+        }
+      },
+      "list_status": {
+        "status": "plan_to_watch",
+        "score": 9,
+        "num_episodes_watched": 0,
+        "is_rewatching": false,
+        "start_date": "2021-04",
+        "updated_at": "2022-01-01T00:00:00+00:00"
+      }
+    }
+  ],
+  "paging": {}
+}

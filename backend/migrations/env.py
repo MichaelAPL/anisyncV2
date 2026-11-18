@@ -22,8 +22,13 @@ def do_run_migrations(connection):
         context.run_migrations()
 
 
+def database_url() -> str:
+    # `-x`-less override used by tests: config.set_main_option("sqlalchemy.url", ...).
+    return config.get_main_option("sqlalchemy.url") or get_settings().sqlalchemy_url
+
+
 async def run_async_migrations():
-    engine = create_async_engine(get_settings().sqlalchemy_url)
+    engine = create_async_engine(database_url())
     async with engine.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await engine.dispose()
@@ -31,7 +36,7 @@ async def run_async_migrations():
 
 if context.is_offline_mode():
     context.configure(
-        url=get_settings().sqlalchemy_url,
+        url=database_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         include_name=include_name,

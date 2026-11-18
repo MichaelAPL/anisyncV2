@@ -1,0 +1,53 @@
+{
+  "data": [
+    {
+      "id": "900",
+      "attributes": {
+        "status": "completed",
+        "progress": 26,
+        "ratingTwenty": 17,
+        "reconsuming": false,
+        "startedAt": "2020-01-02T00:00:00.000Z",
+        "finishedAt": null,
+        "updatedAt": "2022-01-01T00:00:00.000Z"
+      },
+      "relationships": {
+        "anime": {
+          "data": {
+            "type": "anime",
+            "id": "1"
+          }
+        }
+      }
+    }
+  ],
+  "included": [
+    {
+      "type": "anime",
+      "id": "1",
+      "attributes": {
+        "canonicalTitle": "Cowboy Bebop",
+        "episodeCount": 26
+      },
+      "relationships": {
+        "mappings": {
+          "data": [
+            {
+              "type": "mappings",
+              "id": "m1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "mappings",
+      "id": "m1",
+      "attributes": {
+        "externalSite": "myanimelist/anime",
+        "externalId": "1"
+      }
+    }
+  ],
+  "links": {}
+}

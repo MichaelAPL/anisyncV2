@@ -15,6 +15,22 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: anisync
+          POSTGRES_PASSWORD: anisync
+          POSTGRES_DB: anisync
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U anisync"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://anisync:anisync@localhost:5432/anisync_test
     defaults:
       run:
         working-directory: backend
@@ -26,8 +42,8 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
-      # Unit tests mock HTTP with respx and need no database yet. Task 1.0 adds a Postgres service for DB tests.
-      - run: uv run pytest -q
+      # HTTP is mocked with respx; DB tests use the Postgres service above (anisync_test, rolled back per test).
+      - run: uv run pytest -q --cov=anisync --cov-report=term-missing:skip-covered
 
   frontend:
     runs-on: ubuntu-latest

@@ -1,0 +1,68 @@
+{
+  "data": {
+    "MediaListCollection": {
+      "lists": [
+        {
+          "entries": [
+            {
+              "id": 7,
+              "mediaId": 1,
+              "status": "REPEATING",
+              "progress": 4,
+              "updatedAt": 1700000000,
+              "score": 85,
+              "startedAt": {
+                "year": 2020,
+                "month": 5,
+                "day": null
+              },
+              "completedAt": {
+                "year": 2020,
+                "month": 6,
+                "day": 1
+              },
+              "media": {
+                "idMal": 1,
+                "episodes": 26,
+                "title": {
+                  "userPreferred": "Bebop"
+                },
+                "coverImage": null
+              }
+            }
+          ]
+        },
+        {
+          "entries": [
+            {
+              "id": 7,
+              "mediaId": 1,
+              "status": "REPEATING",
+              "progress": 4,
+              "updatedAt": 1700000000,
+              "score": 85,
+              "startedAt": {
+                "year": 2020,
+                "month": 5,
+                "day": null
+              },
+              "completedAt": {
+                "year": 2020,
+                "month": 6,
+                "day": 1
+              },
+              "media": {
+                "idMal": 1,
+                "episodes": 26,
+                "title": {
+                  "userPreferred": "Bebop"
+                },
+                "coverImage": null
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
