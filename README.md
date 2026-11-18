@@ -1,5 +1,7 @@
 # AniSync
 
+[![CI](https://github.com/MichaelAPL/anisyncV2/actions/workflows/ci.yml/badge.svg)](https://github.com/MichaelAPL/anisyncV2/actions/workflows/ci.yml)
+
 Keep your MyAnimeList, AniList and Kitsu anime lists in sync. Pick one list as the master; the others
 mirror it nightly and whenever you edit your list in AniSync.
 

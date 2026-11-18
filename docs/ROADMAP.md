@@ -16,6 +16,9 @@ Update this file at the end of every working session. Work the phases in order; 
 **2026-11-17**
 - Reviewed security, capacity and extensibility, and agreed the plan below.
 - Answered the open questions: anime only, admin requirements, and donations-only funding (see Decisions).
+- Redesigned the canvas in Material 3 (dark mode, phone layouts, admin screens). Roles → permissions model (4.0).
+- Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
+  ruff, pytest, oxlint, frontend build; first run green.
 
 ## Not verified yet
 
@@ -53,7 +56,7 @@ Update this file at the end of every working session. Work the phases in order; 
 
 ## Testing strategy (applies to every phase)
 
-Today: 14 backend unit tests (pure engine + respx-mocked clients), no DB tests, no frontend tests, no CI.
+Today: 14 backend unit tests (pure engine + respx-mocked clients), no DB tests, no frontend tests. CI runs on every push.
 
 | Layer | Tools | What it covers |
 |---|---|---|
@@ -79,7 +82,7 @@ real data yet, so dropping the old tables is fine.
 
 - [ ] **1.0 Test infrastructure first.** Add Hypothesis, pytest-cov; DB fixtures (`anisync_test`, migrate once
       per session, rollback per test); API client fixture; move existing respx payloads into `tests/fixtures/`.
-      Git init + first commit + CI workflow (needs the user's OK to push).
+      (Git repo, first commit and CI are done; add a Postgres service to CI with the first DB tests.)
 - [ ] **1.1 Provider registry.** `providers/` package with a `Provider` descriptor per service: `id` (str),
       display name, monogram, chip colors, `auth_kind` (`oauth_code` | `oauth_pkce_plain` | `password` | `api_key`),
       `score_step`, `rate_limit`, supported media types, client class, auth hooks (authorize URL / exchange / refresh / password login).
