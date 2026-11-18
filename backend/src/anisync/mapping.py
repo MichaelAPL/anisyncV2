@@ -34,6 +34,19 @@ def _chunks[T](items: Sequence[T], size: int) -> Iterable[Sequence[T]]:
         yield items[i : i + size]
 
 
+async def existing_pairs(session: AsyncSession, pairs: Iterable[tuple[str, str]]) -> dict[tuple[str, str], int]:
+    """{(provider, title id): media id} for the pairs that are already stored."""
+    out: dict[tuple[str, str], int] = {}
+    for chunk in _chunks(list(set(pairs)), CHUNK):
+        rows = await session.execute(
+            select(MediaExternalId.provider, MediaExternalId.external_id, MediaExternalId.media_id).where(
+                tuple_(MediaExternalId.provider, MediaExternalId.external_id).in_(chunk)
+            )
+        )
+        out.update({(p, e): m for p, e, m in rows})
+    return out
+
+
 @dataclass
 class KnownTitle:
     """One title as known by several providers at once, with whatever display data came along."""
@@ -96,7 +109,7 @@ class IdMapper:
                 items.append(KnownTitle(ids, t.title, t.episodes, t.cover_url, t.source))
         if not items:
             return
-        known = await self._existing({pair for t in items for pair in t.ids.items()})
+        known = await existing_pairs(self.session, (pair for t in items for pair in t.ids.items()))
         for t in items:
             media_ids = {known[pair] for pair in t.ids.items() if pair in known}
             if len(media_ids) == 1 and all(pair in known for pair in t.ids.items()):
@@ -109,17 +122,6 @@ class IdMapper:
                 log.info("concurrent insert while learning %s; skipping", dict(t.ids))
                 for pair in t.ids.items():
                     known.pop(pair, None)
-
-    async def _existing(self, pairs: set[tuple[str, str]]) -> dict[tuple[str, str], int]:
-        out: dict[tuple[str, str], int] = {}
-        for chunk in _chunks(list(pairs), CHUNK):
-            rows = await self.session.execute(
-                select(MediaExternalId.provider, MediaExternalId.external_id, MediaExternalId.media_id).where(
-                    tuple_(MediaExternalId.provider, MediaExternalId.external_id).in_(chunk)
-                )
-            )
-            out.update({(p, e): m for p, e, m in rows})
-        return out
 
     async def _store(self, t: KnownTitle, known: dict[tuple[str, str], int]) -> None:
         media_ids = sorted({known[pair] for pair in t.ids.items() if pair in known})

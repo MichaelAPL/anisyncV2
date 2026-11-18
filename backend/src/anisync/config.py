@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # Provider credentials (<PROVIDER>_CLIENT_ID / <PROVIDER>_CLIENT_SECRET) are read by the providers themselves,
     # see `providers.base.credentials`.
 
+    # Offline dataset used to pre-fill the ID mapping (see seed.py), and when to check it for a new version (UTC cron).
+    id_dataset_url: str = (
+        "https://github.com/cedya77/anime-offline-database/releases/latest/download/anime-offline-database.jsonl"
+    )
+    id_dataset_cron: str = "0 3 * * 0"
+
     # Run the Procrastinate worker inside the API process (cheap single-container deploys).
     # Set to false and run `anisync-worker` separately once you need to scale.
     run_worker_in_process: bool = True

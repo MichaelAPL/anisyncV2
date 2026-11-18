@@ -11,6 +11,7 @@ from anisync.api import auth, routes
 from anisync.config import get_settings
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)  # request URLs can carry credentials
 settings = get_settings()
 
 

@@ -28,3 +28,12 @@ npm run dev                            # http://localhost:5173
 Tests: `cd backend && uv run pytest -q`
 
 Architecture, decisions and API quirks: [AGENTS.md](AGENTS.md). Status and next steps: [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Data credits
+
+Anime ID mappings between sites are seeded from
+[cedya77/anime-offline-database](https://github.com/cedya77/anime-offline-database), the maintained continuation of
+[manami-project/anime-offline-database](https://github.com/manami-project/anime-offline-database), both licensed under the
+[ODbL 1.0](https://opendatacommons.org/licenses/odbl/1.0/) with contents under the
+[DbCL 1.0](https://opendatacommons.org/licenses/dbcl/1.0/). Load it with `uv run python -m anisync.seed`.
+AniSync is not affiliated with MyAnimeList, AniList or Kitsu.

@@ -17,7 +17,7 @@ Update this file at the end of every working session. Work the phases in order; 
 - Reviewed security, capacity and extensibility, and agreed the plan below.
 - Answered the open questions: anime only, admin requirements, and donations-only funding (see Decisions).
 - Redesigned the canvas in Material 3 (dark mode, phone layouts, admin screens). Roles → permissions model (4.0).
-- Phase 1 tasks 1.0–1.6 done (see below); 1.7 in progress.
+- **Phase 1 done** (tasks 1.0–1.7). 107 backend tests; migrations `3f1a7c2b9d40` and `8c4d1e6a2b57`.
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
 
@@ -76,7 +76,7 @@ Rules:
 - CI (GitHub Actions, once the repo is pushed): ruff, pytest with a Postgres service, frontend lint + typecheck +
   Vitest on every push; Playwright on main.
 
-## Phase 1: Provider-agnostic data model  ← in progress (1.7 left)
+## Phase 1: Provider-agnostic data model  ✔ done 2026-11-18
 
 Everything else builds on this, so do it before the frontend. One Alembic migration; the dev DB holds no
 real data yet, so dropping the old tables is fine.
@@ -107,13 +107,26 @@ real data yet, so dropping the old tables is fine.
       on that provider, so unmapped titles fit) with a nullable `media_id`; also stores `remote_entry_id`, display data
       (`title`, `total_episodes`, `image_url`) and `external_ids` hints, so the list can be served and prune safety checked
       without calling the provider.
-- [ ] **1.7 Seed IDs from offline datasets.** Import job for manami-project `anime-offline-database`
-      (ODbL 1.0: requires attribution, so add it to the site footer/README) and optionally Fribb `anime-lists`
-      (check its license). Run on deploy, then weekly as a periodic task. *Done when* mapping a typical list
-      needs ~0 remote lookups.
-- [ ] Tests: registry, resolver, seeding parser, migration up/down; all existing tests still pass.
+- [x] **1.7 Seed IDs from offline datasets.** `seed.py`: streams the `.jsonl` release asset (62 MB, ~120 MB peak memory,
+      ~8 s), bulk-imports in batches, never changes or removes existing links (manual links and earlier learning win),
+      skips a version it already imported (reads only the first line), records each run in `dataset_imports`.
+      Run once: `uv run python -m anisync.seed [--force]`; the worker also checks weekly (`ID_DATASET_CRON`).
+      Run it after deploying migrations, and with `--force` after registering a new provider (backfills its IDs).
+      - **Source:** the upstream manami-project repo is **archived** (last release 2026-27, July 2026). The default is
+        now `cedya77/anime-offline-database`, a maintained continuation (release 2026-46 on 2026-11-15) with the same
+        format and the same licence (ODbL 1.0 + DbCL 1.0). Set `ID_DATASET_URL` to change it. Risk: it is a one-person
+        project; if it stops, new titles fall back to remote lookups (learned once, shared by all users).
+      - **Attribution (required by the licence):** name both projects in the README (done) and the site footer (Phase 5).
+      - **Fribb `anime-lists`: not used.** Actively maintained, but it has no licence (all rights reserved by default) and
+        is itself generated from the dataset above. Ask the author for a licence if it is ever needed.
+      - The dataset's `picture` URLs are ignored: they point at a provider's image servers, and covers come from the
+        provider APIs (see Phase 5).
+      - **Measured on real data (dev DB, 2026-11-18):** 23,268 titles with two or more provider IDs (16.5k on all
+        three). The 200 most popular titles resolve 100% from the database (0 remote lookups). The 182 newest releasing
+        titles: 97% MAL↔AniList, 75% to Kitsu (Kitsu's own mappings lag), the rest are looked up once and learned.
+- [x] Tests: registry, resolver, seeding parser and import, models, migrations up/down, auth/API flows, engine properties.
 
-## Phase 2: Security hardening
+## Phase 2: Security hardening  ← next
 
 - [ ] **2.1 Server-side sessions.** `sessions(id, token_hash sha256, user_id, created_at, last_seen_at, expires_at,
       user_agent)`. The cookie holds a random token; rotate on login; `POST /auth/logout-all`. The OAuth state/PKCE
@@ -280,7 +293,7 @@ Stack notes (checked 2026-11-17, no stack change needed):
 - [ ] Provider logos: MAL §17 bars its marks "in or as part of" apps beyond source attribution, and AniList/Kitsu
       publish no logo guidelines. Use the colored monogram chips; ask each provider for written permission before
       ever showing their logos.
-- [ ] Donation link (one-off only, see Decisions) and footer: non-affiliation line + manami ODbL attribution.
+- [ ] Donation link (one-off only, see Decisions) and footer: non-affiliation line + dataset attribution naming both anime-offline-database projects (ODbL 1.0).
 
 ## Possible future providers (verify each before committing)
 

@@ -5,7 +5,8 @@ from alembic import command
 
 from tests.conftest import alembic_config, recreate_database
 
-OLD_REVISION = "09c0ce98d575"
+OLD_REVISION = "09c0ce98d575"  # before Phase 1
+PHASE1_REVISION = "3f1a7c2b9d40"
 
 
 def test_migrations_roundtrip_and_match_models():
@@ -20,6 +21,7 @@ def test_migrations_roundtrip_and_match_models():
             "sync_enabled, prune_missing) values (1, 'anilist', '7', 'kaito', 'x', true, false)"
         )
 
+    command.upgrade(cfg, PHASE1_REVISION)
     command.upgrade(cfg, "head")
     command.check(cfg)  # fails if the models and the migrations disagree
     with psycopg.connect(url, autocommit=True) as conn:
@@ -28,7 +30,7 @@ def test_migrations_roundtrip_and_match_models():
         assert {"media", "media_external_ids", "list_snapshots"} <= tables and "anime_ids" not in tables
         assert conn.execute("select 1 from pg_type where typname = 'service'").fetchone() is None
 
-    command.downgrade(cfg, OLD_REVISION)
+    command.downgrade(cfg, OLD_REVISION)  # all the way back through both revisions
     with psycopg.connect(url, autocommit=True) as conn:
         assert conn.execute("select service::text from linked_accounts").fetchone() == ("anilist",)
         assert conn.execute("select to_regclass('anime_ids')").fetchone() != (None,)

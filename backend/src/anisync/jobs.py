@@ -11,7 +11,7 @@ import httpx
 from procrastinate import App, PsycopgConnector, RetryStrategy
 from procrastinate.exceptions import AlreadyEnqueued
 
-from anisync import sync
+from anisync import seed, sync
 from anisync.config import get_settings
 from anisync.db import SessionLocal
 from anisync.providers.base import ListEntry, RateLimited
@@ -36,6 +36,14 @@ async def daily_sync(timestamp: int) -> None:
         user_ids = await sync.users_with_master(session)
     for user_id in user_ids:
         await enqueue_user_sync(user_id, "daily")
+
+
+@app.periodic(cron=settings.id_dataset_cron, periodic_id="seed-ids")
+@app.task(queue="maintenance", queueing_lock="seed-ids", retry=TRANSIENT)
+async def seed_ids(timestamp: int) -> None:
+    """Import the offline ID dataset if there is a new version (cheap otherwise: only its first line is read)."""
+    async with SessionLocal() as session:
+        await seed.run_import(session)
 
 
 @app.task(queue="sync", retry=TRANSIENT)

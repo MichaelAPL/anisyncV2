@@ -50,6 +50,9 @@ Current progress and next steps: **`docs/ROADMAP.md`** (read it first, keep it u
   Fernet-encrypted tokens via properties), `Media` + `MediaExternalId` (canonical title and each provider's ID for it;
   `source` = seed | learned | manual, manual links are never overwritten), `ListSnapshot` (what we last read/wrote per
   account; used from Phase 3), `SyncRun`.
+- `seed.py`: bulk import of the offline ID dataset (`uv run python -m anisync.seed [--force]`; weekly job in `jobs.py`;
+  runs recorded in `dataset_imports`). Run it after migrating a new database. Upstream manami-project is archived: the
+  default source is the `cedya77` continuation (same format and licence; credit both).
 - `mapping.py`: `IdMapper` resolves provider → canonical media → provider. Order: database, hints on list entries
   (`learn_from`), then remote lookups by providers that declare `lookup_from`. Use as `async with IdMapper(session)`.
 - `engine.py`: **pure** diff (`plan_sync`): no I/O, unit + property tested.
@@ -85,6 +88,7 @@ uv sync
 cp .env.example .env                              # then fill TOKEN_ENCRYPTION_KEY, OAuth client ids/secrets
 uv run alembic upgrade head                       # app tables
 uv run procrastinate --app=anisync.jobs.app schema --apply   # job tables (once per DB)
+uv run python -m anisync.seed                                # fill the ID mapping from the offline dataset (~10 s)
 uv run uvicorn anisync.main:app --reload --port 8000         # API + in-process worker
 uv run pytest -q                                  # tests: respx mocks HTTP; DB tests use `anisync_test` on the compose Postgres
                                                   # (skipped locally if it isn't running, failing in CI)
