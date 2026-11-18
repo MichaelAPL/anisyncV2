@@ -5,14 +5,25 @@ credentials once, we exchange them for tokens and never store the password.
 Kitsu moved from kitsu.io to kitsu.app in 2024.
 """
 
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 
-from anisync.config import get_settings
-from anisync.models import Service
-from anisync.services.base import ListEntry, RemoteUser, ServiceClient, Status, TokenSet, quantize_score
+from anisync.providers.base import (
+    AuthKind,
+    ListEntry,
+    Provider,
+    ProviderClient,
+    ProviderColors,
+    RemoteUser,
+    Status,
+    TokenSet,
+    credentials,
+    quantize_score,
+)
+from anisync.providers.registry import register
 
 API = "https://kitsu.app/api/edge"
 TOKEN_URL = "https://kitsu.app/api/oauth/token"
@@ -26,6 +37,9 @@ TO_STATUS = {
     "planned": Status.PLANNING,
 }
 FROM_STATUS = {v: k for k, v in TO_STATUS.items()}
+# Kitsu's `mappings` use its own site names for other providers.
+SITE_TO_PROVIDER = {"myanimelist/anime": "mal", "anilist/anime": "anilist"}
+PROVIDER_TO_SITE = {v: k for k, v in SITE_TO_PROVIDER.items()}
 
 
 def _token_set(data: dict) -> TokenSet:
@@ -37,9 +51,9 @@ def _token_set(data: dict) -> TokenSet:
 
 
 async def _token_request(form: dict[str, str]) -> TokenSet:
-    s = get_settings()
-    if s.kitsu_client_id:
-        form |= {"client_id": s.kitsu_client_id, "client_secret": s.kitsu_client_secret}
+    s = credentials("kitsu")
+    if s.client_id:
+        form |= {"client_id": s.client_id, "client_secret": s.client_secret}
     async with httpx.AsyncClient(timeout=30) as http:
         resp = await http.post(TOKEN_URL, data=form)
         resp.raise_for_status()
@@ -58,10 +72,8 @@ def _parse_dt(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
 
 
-class KitsuClient(ServiceClient):
-    service = Service.KITSU
-    score_step = 5
-    rate_limit = (2, 1)
+class KitsuClient(ProviderClient):
+    provider_id = "kitsu"
 
     async def _jsonapi(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         headers = {"Accept": JSONAPI, "Content-Type": JSONAPI}
@@ -93,14 +105,12 @@ class KitsuClient(ServiceClient):
                 if anime_ref is None:
                     continue
                 anime = included.get(("anime", anime_ref["id"]), {"attributes": {}, "relationships": {}})
-                ids = self._mapping_ids(anime, included)
+                ids = {"kitsu": anime_ref["id"]} | self._mapping_ids(anime, included)
                 rating = attrs.get("ratingTwenty")
                 entries.append(
                     ListEntry(
-                        media_id=int(anime_ref["id"]),
-                        kitsu_id=int(anime_ref["id"]),
-                        mal_id=ids.get("myanimelist/anime"),
-                        anilist_id=ids.get("anilist/anime"),
+                        media_id=anime_ref["id"],
+                        external_ids=ids,
                         remote_entry_id=item["id"],
                         title=anime["attributes"].get("canonicalTitle", ""),
                         total_episodes=anime["attributes"].get("episodeCount"),
@@ -119,16 +129,17 @@ class KitsuClient(ServiceClient):
         return entries
 
     @staticmethod
-    def _mapping_ids(anime: dict, included: dict) -> dict[str, int]:
-        ids: dict[str, int] = {}
+    def _mapping_ids(anime: dict, included: dict) -> dict[str, str]:
+        """{provider id: title id} from the anime's `mappings` (only providers we know)."""
+        ids: dict[str, str] = {}
         refs = ((anime.get("relationships") or {}).get("mappings") or {}).get("data") or []
         for ref in refs:
             m = included.get(("mappings", ref["id"]))
-            if m and m["attributes"]["externalId"].isdigit():
-                ids[m["attributes"]["externalSite"]] = int(m["attributes"]["externalId"])
+            if m and m["attributes"]["externalId"].isdigit() and m["attributes"]["externalSite"] in SITE_TO_PROVIDER:
+                ids[SITE_TO_PROVIDER[m["attributes"]["externalSite"]]] = m["attributes"]["externalId"]
         return ids
 
-    async def _find_entry_id(self, media_id: int) -> str | None:
+    async def _find_entry_id(self, media_id: str) -> str | None:
         data = await self._jsonapi(
             "GET",
             f"{API}/library-entries",
@@ -164,30 +175,53 @@ class KitsuClient(ServiceClient):
                     "attributes": attributes,
                     "relationships": {
                         "user": {"data": {"type": "users", "id": self.remote_user_id}},
-                        "anime": {"data": {"type": "anime", "id": str(entry.media_id)}},
+                        "anime": {"data": {"type": "anime", "id": entry.media_id}},
                     },
                 }
             }
             await self._jsonapi("POST", f"{API}/library-entries", json=body)
 
-    async def delete_entry(self, media_id: int, remote_entry_id: str | None = None) -> None:
+    async def delete_entry(self, media_id: str, remote_entry_id: str | None = None) -> None:
         entry_id = remote_entry_id or await self._find_entry_id(media_id)
         if entry_id:
             await self._jsonapi("DELETE", f"{API}/library-entries/{entry_id}")
 
-    async def kitsu_id_for(self, external_site: str, external_id: int) -> int | None:
-        """Look up a Kitsu anime ID from a MAL ("myanimelist/anime") or AniList ("anilist/anime") ID."""
-        data = await self._jsonapi(
-            "GET",
-            f"{API}/mappings",
-            params={
-                "filter[externalSite]": external_site,
-                "filter[externalId]": external_id,
-                "include": "item",
-            },
-        )
-        for m in data.get("data", []):
-            item = (m.get("relationships", {}).get("item") or {}).get("data")
-            if item and item["type"] == "anime":
-                return int(item["id"])
-        return None
+    async def lookup_external_ids(self, provider_id: str, ids: list[str]) -> list[dict[str, str]]:
+        """Kitsu anime for MAL or AniList IDs, via Kitsu's /mappings (one request per ID)."""
+        if provider_id not in PROVIDER_TO_SITE:
+            raise NotImplementedError(f"kitsu cannot look up IDs from {provider_id}")
+        found: list[dict[str, str]] = []
+        for external_id in ids:
+            data = await self._jsonapi(
+                "GET",
+                f"{API}/mappings",
+                params={
+                    "filter[externalSite]": PROVIDER_TO_SITE[provider_id],
+                    "filter[externalId]": external_id,
+                    "include": "item",
+                },
+            )
+            for m in data.get("data", []):
+                item = (m.get("relationships", {}).get("item") or {}).get("data")
+                if item and item["type"] == "anime":
+                    found.append({provider_id: external_id, "kitsu": item["id"]})
+                    break
+        return found
+
+
+PROVIDER = register(
+    Provider(
+        id="kitsu",
+        name="Kitsu",
+        monogram="K",
+        colors=ProviderColors(bg="#FDE6E2", fg="#B42318", dark_bg="#5A1A12", dark_fg="#FFB4A8"),
+        auth_kind=AuthKind.PASSWORD,
+        score_step=5,
+        rate_limit=(2, 1),
+        client=KitsuClient,
+        url_pattern=re.compile(r"^https?://kitsu\.(?:app|io)/anime/(\d+)"),
+        lookup_from=frozenset({"mal", "anilist"}),
+        password_login=password_login,
+        refresh=refresh,
+    )
+)

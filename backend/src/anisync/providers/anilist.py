@@ -4,15 +4,26 @@ OAuth2 authorization code grant. Tokens last one year and cannot be refreshed,
 so the user has to re-link when it expires. Rate limit: 90 req/min (sometimes degraded to 30).
 """
 
+import re
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx
 
-from anisync.config import get_settings
-from anisync.models import Service
-from anisync.services.base import ListEntry, RemoteUser, ServiceClient, Status, TokenSet, quantize_score
+from anisync.providers.base import (
+    AuthKind,
+    ListEntry,
+    Provider,
+    ProviderClient,
+    ProviderColors,
+    RemoteUser,
+    Status,
+    TokenSet,
+    credentials,
+    quantize_score,
+)
+from anisync.providers.registry import register
 
 GRAPHQL_URL = "https://graphql.anilist.co"
 AUTHORIZE_URL = "https://anilist.co/api/v2/oauth/authorize"
@@ -61,7 +72,7 @@ mutation ($mediaId: Int, $status: MediaListStatus, $scoreRaw: Int, $progress: In
 ENTRY_ID_QUERY = "query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { id } }"
 DELETE_MUTATION = "mutation ($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }"
 VIEWER_QUERY = "{ Viewer { id name } }"
-# Batch ID lookups (used by the ID mapper). perPage max is 50.
+# Batch ID lookups (used by the ID resolver). perPage max is 50.
 BY_MAL_IDS = "query ($ids: [Int]) { Page(perPage: 50) { media(idMal_in: $ids, type: ANIME) { id idMal } } }"
 BY_IDS = "query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids, type: ANIME) { id idMal } } }"
 
@@ -76,9 +87,10 @@ def _date_to_fuzzy(d: date | None) -> dict | None:
     return {"year": d.year, "month": d.month, "day": d.day} if d else None
 
 
-def authorize_url(state: str, redirect_uri: str) -> str:
+def authorize_url(state: str, code_verifier: str | None, redirect_uri: str) -> str:
+    # Plain authorization-code flow: `code_verifier` is unused.
     params = {
-        "client_id": get_settings().anilist_client_id,
+        "client_id": credentials("anilist").client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "state": state,
@@ -86,15 +98,15 @@ def authorize_url(state: str, redirect_uri: str) -> str:
     return f"{AUTHORIZE_URL}?{urlencode(params)}"
 
 
-async def exchange_code(code: str, redirect_uri: str) -> TokenSet:
-    s = get_settings()
+async def exchange_code(code: str, code_verifier: str | None, redirect_uri: str) -> TokenSet:
+    s = credentials("anilist")
     async with httpx.AsyncClient(timeout=30) as http:
         resp = await http.post(
             TOKEN_URL,
             json={
                 "grant_type": "authorization_code",
-                "client_id": s.anilist_client_id,
-                "client_secret": s.anilist_client_secret,
+                "client_id": s.client_id,
+                "client_secret": s.client_secret,
                 "redirect_uri": redirect_uri,
                 "code": code,
             },
@@ -113,10 +125,8 @@ class AniListError(Exception):
     pass
 
 
-class AniListClient(ServiceClient):
-    service = Service.ANILIST
-    score_step = 1
-    rate_limit = (25, 60)  # stay under the degraded 30/min limit
+class AniListClient(ProviderClient):
+    provider_id = "anilist"
 
     async def gql(self, query: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
         resp = await self._request(
@@ -140,10 +150,12 @@ class AniListClient(ServiceClient):
         for lst in data["MediaListCollection"]["lists"]:
             for e in lst["entries"]:
                 media = e["media"]
+                ids = {"anilist": str(e["mediaId"])}
+                if media.get("idMal"):
+                    ids["mal"] = str(media["idMal"])
                 seen[e["id"]] = ListEntry(
-                    media_id=e["mediaId"],
-                    anilist_id=e["mediaId"],
-                    mal_id=media.get("idMal"),
+                    media_id=str(e["mediaId"]),
+                    external_ids=ids,
                     remote_entry_id=str(e["id"]),
                     title=media["title"]["userPreferred"],
                     total_episodes=media.get("episodes"),
@@ -161,7 +173,7 @@ class AniListClient(ServiceClient):
     async def save_entry(self, entry: ListEntry) -> None:
         status = "REPEATING" if entry.rewatching and entry.status == Status.WATCHING else FROM_STATUS[entry.status]
         variables: dict[str, Any] = {
-            "mediaId": entry.media_id,
+            "mediaId": int(entry.media_id),
             "status": status,
             "progress": entry.progress,
             "scoreRaw": quantize_score(entry.score, self.score_step) or 0,
@@ -173,20 +185,44 @@ class AniListClient(ServiceClient):
             variables["completedAt"] = _date_to_fuzzy(entry.finished_at)
         await self.gql(SAVE_MUTATION, variables)
 
-    async def delete_entry(self, media_id: int, remote_entry_id: str | None = None) -> None:
+    async def delete_entry(self, media_id: str, remote_entry_id: str | None = None) -> None:
         if remote_entry_id is None:
-            found = await self.gql(ENTRY_ID_QUERY, {"userId": int(self.remote_user_id), "mediaId": media_id})
+            found = await self.gql(ENTRY_ID_QUERY, {"userId": int(self.remote_user_id), "mediaId": int(media_id)})
             if not found.get("MediaList"):
                 return
             remote_entry_id = str(found["MediaList"]["id"])
         await self.gql(DELETE_MUTATION, {"id": int(remote_entry_id)})
 
-    async def media_by_mal_ids(self, mal_ids: list[int]) -> dict[int, int]:
-        """{mal_id: anilist_id} for up to 50 MAL IDs."""
-        data = await self.gql(BY_MAL_IDS, {"ids": mal_ids})
-        return {m["idMal"]: m["id"] for m in data["Page"]["media"] if m.get("idMal")}
+    async def lookup_external_ids(self, provider_id: str, ids: list[str]) -> list[dict[str, str]]:
+        """Titles by MAL ID (`idMal`) or by AniList ID, 50 per request. AniList knows only the MAL cross-reference."""
+        if provider_id not in ("mal", "anilist"):
+            raise NotImplementedError(f"anilist cannot look up IDs from {provider_id}")
+        query = BY_MAL_IDS if provider_id == "mal" else BY_IDS
+        found: list[dict[str, str]] = []
+        for start in range(0, len(ids), 50):
+            data = await self.gql(query, {"ids": [int(i) for i in ids[start : start + 50]]})
+            for m in data["Page"]["media"]:
+                mapping = {"anilist": str(m["id"])}
+                if m.get("idMal"):
+                    mapping["mal"] = str(m["idMal"])
+                found.append(mapping)
+        return found
 
-    async def media_by_ids(self, anilist_ids: list[int]) -> dict[int, int | None]:
-        """{anilist_id: mal_id or None} for up to 50 AniList IDs."""
-        data = await self.gql(BY_IDS, {"ids": anilist_ids})
-        return {m["id"]: m.get("idMal") for m in data["Page"]["media"]}
+
+PROVIDER = register(
+    Provider(
+        id="anilist",
+        name="AniList",
+        monogram="AL",
+        colors=ProviderColors(bg="#DDF3FF", fg="#0369A1", dark_bg="#0B3550", dark_fg="#A8DDFF"),
+        auth_kind=AuthKind.OAUTH_CODE,
+        score_step=1,
+        rate_limit=(25, 60),  # AniList allows ~90/min but is sometimes degraded to 30/min: stay under that
+        client=AniListClient,
+        url_pattern=re.compile(r"^https?://anilist\.co/anime/(\d+)"),
+        lookup_from=frozenset({"mal", "anilist"}),
+        authorize_url=authorize_url,
+        exchange_code=exchange_code,
+        # No refresh: AniList tokens last a year and the user has to re-link afterwards.
+    )
+)

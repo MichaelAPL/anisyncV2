@@ -4,14 +4,25 @@ OAuth2 authorization code + PKCE (MAL only supports the `plain` challenge method
 Access tokens last ~31 days and can be refreshed.
 """
 
+import re
 from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
 
-from anisync.config import get_settings
-from anisync.models import Service
-from anisync.services.base import ListEntry, RemoteUser, ServiceClient, Status, TokenSet, quantize_score
+from anisync.providers.base import (
+    AuthKind,
+    ListEntry,
+    Provider,
+    ProviderClient,
+    ProviderColors,
+    RemoteUser,
+    Status,
+    TokenSet,
+    credentials,
+    quantize_score,
+)
+from anisync.providers.registry import register
 
 API = "https://api.myanimelist.net/v2"
 AUTHORIZE_URL = "https://myanimelist.net/v1/oauth2/authorize"
@@ -35,10 +46,10 @@ def _parse_date(value: str | None) -> date | None:
         return None
 
 
-def authorize_url(state: str, code_verifier: str, redirect_uri: str) -> str:
+def authorize_url(state: str, code_verifier: str | None, redirect_uri: str) -> str:
     params = {
         "response_type": "code",
-        "client_id": get_settings().mal_client_id,
+        "client_id": credentials("mal").client_id,
         "state": state,
         "redirect_uri": redirect_uri,
         "code_challenge": code_verifier,
@@ -55,14 +66,14 @@ def _token_set(data: dict) -> TokenSet:
     )
 
 
-async def exchange_code(code: str, code_verifier: str, redirect_uri: str) -> TokenSet:
-    s = get_settings()
+async def exchange_code(code: str, code_verifier: str | None, redirect_uri: str) -> TokenSet:
+    s = credentials("mal")
     async with httpx.AsyncClient(timeout=30) as http:
         resp = await http.post(
             TOKEN_URL,
             data={
-                "client_id": s.mal_client_id,
-                "client_secret": s.mal_client_secret,
+                "client_id": s.client_id,
+                "client_secret": s.client_secret,
                 "grant_type": "authorization_code",
                 "code": code,
                 "code_verifier": code_verifier,
@@ -74,13 +85,13 @@ async def exchange_code(code: str, code_verifier: str, redirect_uri: str) -> Tok
 
 
 async def refresh(refresh_token: str) -> TokenSet:
-    s = get_settings()
+    s = credentials("mal")
     async with httpx.AsyncClient(timeout=30) as http:
         resp = await http.post(
             TOKEN_URL,
             data={
-                "client_id": s.mal_client_id,
-                "client_secret": s.mal_client_secret,
+                "client_id": s.client_id,
+                "client_secret": s.client_secret,
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
             },
@@ -89,10 +100,8 @@ async def refresh(refresh_token: str) -> TokenSet:
         return _token_set(resp.json())
 
 
-class MalClient(ServiceClient):
-    service = Service.MAL
-    score_step = 10
-    rate_limit = (1, 1)  # MAL doesn't publish limits; ~1 req/s is safe.
+class MalClient(ProviderClient):
+    provider_id = "mal"
 
     async def whoami(self) -> RemoteUser:
         data = (await self._request("GET", f"{API}/users/@me")).json()
@@ -108,8 +117,8 @@ class MalClient(ServiceClient):
                 node, ls = item["node"], item["list_status"]
                 entries.append(
                     ListEntry(
-                        media_id=node["id"],
-                        mal_id=node["id"],
+                        media_id=str(node["id"]),
+                        external_ids={"mal": str(node["id"])},
                         title=node["title"],
                         total_episodes=node.get("num_episodes") or None,
                         image_url=(node.get("main_picture") or {}).get("medium"),
@@ -140,5 +149,23 @@ class MalClient(ServiceClient):
             form["finish_date"] = entry.finished_at.isoformat()
         await self._request("PATCH", f"{API}/anime/{entry.media_id}/my_list_status", data=form)
 
-    async def delete_entry(self, media_id: int, remote_entry_id: str | None = None) -> None:
+    async def delete_entry(self, media_id: str, remote_entry_id: str | None = None) -> None:
         await self._request("DELETE", f"{API}/anime/{media_id}/my_list_status")
+
+
+PROVIDER = register(
+    Provider(
+        id="mal",
+        name="MyAnimeList",
+        monogram="MAL",
+        colors=ProviderColors(bg="#E3E9F7", fg="#2E51A2", dark_bg="#1F2F5C", dark_fg="#C9D6FF"),
+        auth_kind=AuthKind.OAUTH_PKCE_PLAIN,
+        score_step=10,
+        rate_limit=(1, 1),  # MAL doesn't publish limits; ~1 req/s is safe.
+        client=MalClient,
+        url_pattern=re.compile(r"^https?://myanimelist\.net/anime/(\d+)"),
+        authorize_url=authorize_url,
+        exchange_code=exchange_code,
+        refresh=refresh,
+    )
+)

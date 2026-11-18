@@ -6,8 +6,8 @@ from sqlalchemy import select
 
 from anisync import jobs, sync
 from anisync.api.deps import CurrentUser, Session
-from anisync.models import LinkedAccount, Service, SyncRun, User
-from anisync.services.base import ListEntry, ReauthRequired, Status
+from anisync.models import LinkedAccount, SyncRun, User
+from anisync.providers.base import ListEntry, ReauthRequired, Status
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api", tags=["api"])
 
 class AccountOut(BaseModel):
     id: int
-    service: Service
+    provider: str
     remote_username: str
     is_master: bool
     sync_enabled: bool
@@ -41,7 +41,7 @@ def _me(user: User) -> MeOut:
         accounts=[
             AccountOut(
                 id=a.id,
-                service=a.service,
+                provider=a.provider,
                 remote_username=a.remote_username,
                 is_master=a.id == user.master_account_id,
                 sync_enabled=a.sync_enabled,
@@ -137,15 +137,15 @@ class EntryIn(BaseModel):
 
 
 @router.put("/list/{media_id}")
-async def save_entry(media_id: int, body: EntryIn, user: CurrentUser, session: Session) -> dict:
+async def save_entry(media_id: str, body: EntryIn, user: CurrentUser, session: Session) -> dict:
     """Edit the master list, then push the change to every mirror in the background."""
     client = await _master_client(user, session)
-    entry = ListEntry(media_id=media_id, **body.model_dump())
+    entry = ListEntry(media_id=media_id, external_ids={user.master.provider: media_id}, **body.model_dump())
     await client.save_entry(entry)
     for mirror in user.mirrors:
         await jobs.push_entry.defer_async(
             account_id=mirror.id,
-            master_service=user.master.service.value,
+            master_provider=user.master.provider,
             master_media_id=media_id,
             entry=entry.to_dict(),
         )
@@ -153,12 +153,12 @@ async def save_entry(media_id: int, body: EntryIn, user: CurrentUser, session: S
 
 
 @router.delete("/list/{media_id}")
-async def delete_entry(media_id: int, user: CurrentUser, session: Session) -> dict:
+async def delete_entry(media_id: str, user: CurrentUser, session: Session) -> dict:
     client = await _master_client(user, session)
     await client.delete_entry(media_id)
     for mirror in user.mirrors:
         await jobs.push_entry.defer_async(
-            account_id=mirror.id, master_service=user.master.service.value, master_media_id=media_id, entry=None
+            account_id=mirror.id, master_provider=user.master.provider, master_media_id=media_id, entry=None
         )
     return {"ok": True}
 

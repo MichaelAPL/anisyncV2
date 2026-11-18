@@ -1,1 +1,1 @@
-"""AniSync: keep MyAnimeList, AniList and Kitsu lists in sync."""
+"""AniSync: keep your anime lists on different providers in sync."""

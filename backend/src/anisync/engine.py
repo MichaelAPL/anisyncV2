@@ -6,7 +6,7 @@ No I/O here so it's trivial to unit test.
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
-from anisync.services.base import ListEntry, quantize_score
+from anisync.providers.base import ListEntry, quantize_score
 
 SYNCED_FIELDS = ("status", "progress", "score", "rewatching", "started_at", "finished_at")
 
@@ -14,7 +14,7 @@ SYNCED_FIELDS = ("status", "progress", "score", "rewatching", "started_at", "fin
 @dataclass
 class Change:
     op: Literal["create", "update", "delete"]
-    media_id: int  # ID on the mirror service
+    media_id: str  # ID on the mirror provider
     desired: ListEntry | None
     current: ListEntry | None
     fields: list[str] = field(default_factory=list)
@@ -43,7 +43,7 @@ def changed_fields(master: ListEntry, mirror: ListEntry, score_step: int) -> lis
         diffs.append("score")
     if master.rewatching != mirror.rewatching:
         diffs.append("rewatching")
-    # Dates are only pushed when the master has them (services disagree on partial dates).
+    # Dates are only pushed when the master has them (providers disagree on partial dates).
     if master.started_at and master.started_at != mirror.started_at:
         diffs.append("started_at")
     if master.finished_at and master.finished_at != mirror.finished_at:
@@ -54,14 +54,14 @@ def changed_fields(master: ListEntry, mirror: ListEntry, score_step: int) -> lis
 def plan_sync(
     master: list[ListEntry],
     mirror: list[ListEntry],
-    id_map: dict[int, int | None],
+    id_map: dict[str, str | None],
     score_step: int,
     prune_missing: bool = False,
 ) -> Plan:
-    """id_map: master media_id -> mirror media_id."""
+    """id_map: master media_id -> mirror media_id (None = the title has no ID on the mirror's provider)."""
     plan = Plan()
     mirror_by_id = {e.media_id: e for e in mirror}
-    wanted: set[int] = set()
+    wanted: set[str] = set()
 
     for entry in master:
         target_id = id_map.get(entry.media_id)
@@ -88,5 +88,6 @@ def plan_sync(
     return plan
 
 
-def _hints(e: ListEntry) -> set[tuple[str, int]]:
-    return {(k, v) for k, v in (("mal", e.mal_id), ("anilist", e.anilist_id), ("kitsu", e.kitsu_id)) if v}
+def _hints(e: ListEntry) -> set[tuple[str, str]]:
+    """(provider, title ID) pairs an entry is known by; two entries sharing one are the same title."""
+    return set(e.external_ids.items())

@@ -14,8 +14,7 @@ from procrastinate.exceptions import AlreadyEnqueued
 from anisync import sync
 from anisync.config import get_settings
 from anisync.db import SessionLocal
-from anisync.models import Service
-from anisync.services.base import ListEntry, RateLimited
+from anisync.providers.base import ListEntry, RateLimited
 
 log = logging.getLogger(__name__)
 settings = get_settings()
@@ -46,10 +45,10 @@ async def sync_user(user_id: int, trigger: str) -> dict:
 
 
 @app.task(queue="push", retry=TRANSIENT)
-async def push_entry(account_id: int, master_service: str, master_media_id: int, entry: dict | None) -> None:
+async def push_entry(account_id: int, master_provider: str, master_media_id: str, entry: dict | None) -> None:
     async with SessionLocal() as session:
         await sync.push_entry(
-            session, account_id, Service(master_service), master_media_id, ListEntry.from_dict(entry) if entry else None
+            session, account_id, master_provider, master_media_id, ListEntry.from_dict(entry) if entry else None
         )
 
 

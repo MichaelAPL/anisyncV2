@@ -39,19 +39,26 @@ Current progress and next steps: **`docs/ROADMAP.md`** (read it first, keep it u
 
 ## Backend layout (`backend/src/anisync/`)
 
-> **Planned refactor, see `docs/ROADMAP.md` Phase 1:** the hardcoded three-provider pieces below (`Service` enum,
-> `AnimeIds` columns, `ListEntry.mal_id/anilist_id/kitsu_id`, pairwise lookups in `mapping.py`, per-provider
-> branches in `api/auth.py`) are being replaced by a provider registry and canonical media IDs. Don't extend them.
-
-- `config.py`: pydantic-settings, reads `backend/.env` (template: `.env.example`).
-- `models.py`: `User` (has `master_account_id`), `LinkedAccount` (Fernet-encrypted tokens via properties),
-  `AnimeIds` (cross-service ID cache), `SyncRun` (history + JSON summary).
-- `services/base.py`: **normalized model**: `ListEntry`, `Status`, `ServiceClient` ABC, `quantize_score`,
-  errors `RateLimited` / `ReauthRequired`. `services/{mal,anilist,kitsu}.py`: one client + OAuth helpers each.
-- `engine.py`: **pure** diff (`plan_sync`): no I/O, fully unit tested.
-- `mapping.py`: `IdMapper` translates IDs between services (entry hints → `anime_ids` table → remote lookups).
-- `sync.py`: orchestration (token refresh, run plans, `push_entry`). `jobs.py`: Procrastinate tasks.
-- `api/auth.py`: OAuth login/callback, Kitsu link, logout. `api/routes.py`: `/api/*` JSON endpoints.
+- `providers/`: **the only place that names a specific provider** (a test enforces it).
+  `base.py`: `ListEntry` (provider-agnostic; `media_id` is a string, `external_ids` maps provider → title ID),
+  `Provider` descriptor (id, name, monogram, colors, `auth_kind`, `score_step`, `rate_limit`, url pattern, auth hooks,
+  `lookup_from`), `ProviderClient` ABC, `Status`, `quantize_score`, errors, `credentials()`.
+  `registry.py`: `get_provider` / `all_providers`. `{mal,anilist,kitsu}.py`: one client + OAuth helpers + a registered
+  `Provider` each. **Adding a provider = one module + one import line in `providers/__init__.py` + tests**; no migration,
+  route or frontend change (proved by the fake `acme` provider in the tests).
+- `models.py`: `User` (`master_account_id`), `LinkedAccount` (`provider` is a plain string validated against the registry;
+  Fernet-encrypted tokens via properties), `Media` + `MediaExternalId` (canonical title and each provider's ID for it;
+  `source` = seed | learned | manual, manual links are never overwritten), `ListSnapshot` (what we last read/wrote per
+  account; used from Phase 3), `SyncRun`.
+- `mapping.py`: `IdMapper` resolves provider → canonical media → provider. Order: database, hints on list entries
+  (`learn_from`), then remote lookups by providers that declare `lookup_from`. Use as `async with IdMapper(session)`.
+- `engine.py`: **pure** diff (`plan_sync`): no I/O, unit + property tested.
+- `sync.py`: orchestration (token refresh via the provider's `refresh` hook, run plans, `push_entry`). `jobs.py`: Procrastinate tasks.
+- `api/auth.py`: generic routes driven by `auth_kind`: `GET /auth/{provider}/login|callback` (redirect providers),
+  `POST /auth/{provider}/password` (credential providers, needs a signed-in user), `POST /auth/logout`.
+  `api/routes.py`: `/api/*` JSON endpoints.
+- `config.py`: pydantic-settings (`backend/.env`, template `.env.example`). Provider credentials are
+  `<PROVIDER>_CLIENT_ID` / `<PROVIDER>_CLIENT_SECRET`, read by `providers.base.credentials`.
 
 ## Service quirks (hard-won, keep these in mind)
 
@@ -79,18 +86,21 @@ cp .env.example .env                              # then fill TOKEN_ENCRYPTION_K
 uv run alembic upgrade head                       # app tables
 uv run procrastinate --app=anisync.jobs.app schema --apply   # job tables (once per DB)
 uv run uvicorn anisync.main:app --reload --port 8000         # API + in-process worker
-uv run pytest -q                                  # tests (respx mocks HTTP; no DB needed)
+uv run pytest -q                                  # tests: respx mocks HTTP; DB tests use `anisync_test` on the compose Postgres
+                                                  # (skipped locally if it isn't running, failing in CI)
 uv run ruff check --fix src tests && uv run ruff format src tests
 uv run alembic revision --autogenerate -m "..."   # after model changes (ignores procrastinate_* tables)
 
 cd ../frontend && npm install && npm run dev      # http://localhost:5173
 ```
 
-OAuth redirect URIs (register with MAL/AniList): `http://localhost:5173/auth/{mal|anilist}/callback`.
+OAuth redirect URIs (register with each redirect-flow provider): `http://localhost:5173/auth/<provider id>/callback`
+(e.g. `mal`, `anilist`).
 
 ## Conventions
 
-- Keep `engine.py` pure; put I/O in `sync.py` / clients. New service = new `ServiceClient` + entry in `services/__init__.py:CLIENTS`.
+- Keep `engine.py` pure; put I/O in `sync.py` / clients. New provider = a module in `providers/` that registers a `Provider`
+  (see above); never branch on a provider's name outside `providers/`: add a descriptor field or a client method instead.
 - Tests: see ROADMAP → Testing strategy. Every client parse/serialize change gets a respx test (prefer recorded
   fixtures), every engine rule a unit or Hypothesis test, every DB/API behaviour a test against the `anisync_test`
   DB. Never hit real provider APIs from the test suite.

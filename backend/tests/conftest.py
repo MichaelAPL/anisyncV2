@@ -66,6 +66,15 @@ def ensure_database(name: str) -> str:
     return with_database(TEST_DATABASE_URL, name)
 
 
+def recreate_database(name: str) -> str:
+    """Drop and recreate database `name`, so a test never depends on what an earlier run left behind."""
+    ensure_database(name)
+    with psycopg.connect(with_database(TEST_DATABASE_URL, "postgres"), autocommit=True) as conn:
+        conn.execute(sql.SQL("drop database {} with (force)").format(sql.Identifier(name)))
+        conn.execute(sql.SQL("create database {}").format(sql.Identifier(name)))
+    return with_database(TEST_DATABASE_URL, name)
+
+
 @pytest.fixture(scope="session")
 def database() -> str:
     """The migrated test database (created on first use)."""
@@ -107,3 +116,13 @@ async def client(session):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def acme():
+    """Registers the fake "acme" provider for one test."""
+    from tests import fakes
+
+    fakes.register_acme()
+    yield fakes.AcmeClient
+    fakes.unregister_acme()

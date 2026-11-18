@@ -17,6 +17,7 @@ Update this file at the end of every working session. Work the phases in order; 
 - Reviewed security, capacity and extensibility, and agreed the plan below.
 - Answered the open questions: anime only, admin requirements, and donations-only funding (see Decisions).
 - Redesigned the canvas in Material 3 (dark mode, phone layouts, admin screens). Roles → permissions model (4.0).
+- Phase 1 tasks 1.0–1.6 done (see below); 1.7 in progress.
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
 
@@ -75,30 +76,37 @@ Rules:
 - CI (GitHub Actions, once the repo is pushed): ruff, pytest with a Postgres service, frontend lint + typecheck +
   Vitest on every push; Playwright on main.
 
-## Phase 1: Provider-agnostic data model  ← next
+## Phase 1: Provider-agnostic data model  ← in progress (1.7 left)
 
 Everything else builds on this, so do it before the frontend. One Alembic migration; the dev DB holds no
 real data yet, so dropping the old tables is fine.
 
-- [ ] **1.0 Test infrastructure first.** Add Hypothesis, pytest-cov; DB fixtures (`anisync_test`, migrate once
+- [x] **1.0 Test infrastructure first.** (Sample payloads in `tests/fixtures/` are hand-written to the providers' documented
+      shapes, not recorded: replace them with sanitized real responses during Phase 6 testing.) Add Hypothesis, pytest-cov; DB fixtures (`anisync_test`, migrate once
       per session, rollback per test); API client fixture; move existing respx payloads into `tests/fixtures/`.
       (Git repo, first commit and CI are done; add a Postgres service to CI with the first DB tests.)
-- [ ] **1.1 Provider registry.** `providers/` package with a `Provider` descriptor per service: `id` (str),
+- [x] **1.1 Provider registry.** `providers/` package with a `Provider` descriptor per service: `id` (str),
       display name, monogram, chip colors, `auth_kind` (`oauth_code` | `oauth_pkce_plain` | `password` | `api_key`),
       `score_step`, `rate_limit`, supported media types, client class, auth hooks (authorize URL / exchange / refresh / password login).
       `CLIENTS` dict and `sync.REFRESHERS` go away. *Done when* nothing outside `providers/` names MAL/AniList/Kitsu.
-- [ ] **1.2 Provider column becomes a string.** Replace the Postgres `service` enum with a `String` validated
+      **Done** (enforced by `test_registry.py::test_nothing_outside_the_providers_package_names_a_provider`). The generic
+      auth routes of 2.4 were done here too: `/auth/{provider}/login|callback|password`; Kitsu's route moved from
+      `POST /auth/kitsu` to `POST /auth/kitsu/password`. Provider credentials are `<PROVIDER>_CLIENT_ID/_SECRET`.
+- [x] **1.2 Provider column becomes a string.** Replace the Postgres `service` enum with a `String` validated
       against the registry.
-- [ ] **1.3 Canonical media + external IDs.** Replace `anime_ids` with `media(id, title, episodes, cover_url, cover_color,
+- [x] **1.3 Canonical media + external IDs.** Replace `anime_ids` with `media(id, title, episodes, cover_url, cover_color,
       cover_url, …)` and `media_external_ids(media_id, provider, external_id, unique(provider, external_id))`.
-- [ ] **1.4 `ListEntry` generalised.** `media_id: str` (some providers use string IDs), `external_ids: dict[str, str]`
+- [x] **1.4 `ListEntry` generalised.** `media_id: str` (some providers use string IDs), `external_ids: dict[str, str]`
       instead of `mal_id/anilist_id/kitsu_id`. `progress` is episodes.
       Update the engine's prune-safety hints to use `external_ids`.
-- [ ] **1.5 Resolver through canonical media.** `mapping.py` resolves provider→canonical→provider. Each client may
+- [x] **1.5 Resolver through canonical media.** `mapping.py` resolves provider→canonical→provider. Each client may
       implement an optional `lookup_external_ids(ids)`; no pairwise code paths.
-- [ ] **1.6 List snapshots table.** `list_snapshots(account_id, media_id, status, progress, score, rewatching,
+- [x] **1.6 List snapshots table.** `list_snapshots(account_id, media_id, status, progress, score, rewatching,
       started_at, finished_at, remote_updated_at, last_written_hash)`: what we last read from or wrote to each
-      account (logic arrives in Phase 3).
+      account (logic arrives in Phase 3). Differences from the sketch: keyed by `(account_id, external_id)` (the title's ID
+      on that provider, so unmapped titles fit) with a nullable `media_id`; also stores `remote_entry_id`, display data
+      (`title`, `total_episodes`, `image_url`) and `external_ids` hints, so the list can be served and prune safety checked
+      without calling the provider.
 - [ ] **1.7 Seed IDs from offline datasets.** Import job for manami-project `anime-offline-database`
       (ODbL 1.0: requires attribution, so add it to the site footer/README) and optionally Fribb `anime-lists`
       (check its license). Run on deploy, then weekly as a periodic task. *Done when* mapping a typical list
@@ -113,8 +121,7 @@ real data yet, so dropping the old tables is fine.
 - [ ] **2.2 Key rotation.** `TOKEN_ENCRYPTION_KEYS=new,old` → `MultiFernet`; CLI command `anisync rotate-keys`
       re-encrypts all tokens. Keep accepting single `TOKEN_ENCRYPTION_KEY` for dev.
 - [ ] **2.3 CSRF.** Middleware rejecting state-changing requests whose `Origin`/`Referer` isn't `PUBLIC_URL`.
-- [ ] **2.4 Generic auth routes** driven by `auth_kind` (`/auth/{provider}/login|callback`, `/auth/{provider}/password`).
-      Evaluate Authlib for the OAuth client (it must support MAL's PKCE `plain`); adopt it only if it shrinks the code.
+- [ ] **2.4 Generic auth routes** (done in Phase 1.1). Still to do: evaluate Authlib for the OAuth client (it must support MAL's PKCE `plain`); adopt it only if it shrinks the code.
 - [ ] **2.5 SQL injection guard.** Already safe: every query uses SQLAlchemy bound parameters and there is no raw SQL
       (checked 2026-11-18). Lock it in: enable ruff's `S` (flake8-bandit) rules, including S608, so CI fails on
       SQL built from strings. Rule: never `text()` / `exec_driver_sql` with interpolated values.

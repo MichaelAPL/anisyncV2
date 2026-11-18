@@ -18,13 +18,8 @@ class Settings(BaseSettings):
     #   uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     token_encryption_key: str = ""
 
-    mal_client_id: str = ""
-    mal_client_secret: str = ""
-    anilist_client_id: str = ""
-    anilist_client_secret: str = ""
-    # Kitsu's password grant does not currently require client credentials; set them if that changes.
-    kitsu_client_id: str = ""
-    kitsu_client_secret: str = ""
+    # Provider credentials (<PROVIDER>_CLIENT_ID / <PROVIDER>_CLIENT_SECRET) are read by the providers themselves,
+    # see `providers.base.credentials`.
 
     # Run the Procrastinate worker inside the API process (cheap single-container deploys).
     # Set to false and run `anisync-worker` separately once you need to scale.

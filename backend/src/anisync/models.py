@@ -1,17 +1,22 @@
-from datetime import datetime
-from enum import StrEnum
+from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from anisync.crypto import decrypt, encrypt
 from anisync.db import Base
-
-
-class Service(StrEnum):
-    MAL = "mal"
-    ANILIST = "anilist"
-    KITSU = "kitsu"
+from anisync.providers.registry import get_provider
 
 
 class User(Base):
@@ -21,7 +26,7 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(100))
     # The linked account whose list is the source of truth. Mirrors are overwritten to match it.
     master_account_id: Mapped[int | None] = mapped_column(
-        ForeignKey("linked_accounts.id", ondelete="SET NULL", use_alter=True)
+        ForeignKey("linked_accounts.id", ondelete="SET NULL", use_alter=True, name="fk_users_master_account_id")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -39,16 +44,15 @@ class User(Base):
 
 
 class LinkedAccount(Base):
-    """A user's account on one anime list service, with its (encrypted) OAuth tokens."""
+    """A user's account on one list provider, with its (encrypted) OAuth tokens."""
 
     __tablename__ = "linked_accounts"
-    __table_args__ = (UniqueConstraint("service", "remote_user_id"),)
+    __table_args__ = (UniqueConstraint("provider", "remote_user_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    service: Mapped[Service] = mapped_column(
-        Enum(Service, name="service", values_callable=lambda e: [m.value for m in e])
-    )
+    # Provider ID, validated against the provider registry (a plain string, so new providers need no migration).
+    provider: Mapped[str] = mapped_column(String(32))
     remote_user_id: Mapped[str] = mapped_column(String(64))
     remote_username: Mapped[str] = mapped_column(String(100))
     _access_token: Mapped[str] = mapped_column("access_token", Text)
@@ -62,6 +66,11 @@ class LinkedAccount(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[User] = relationship(back_populates="accounts", foreign_keys=[user_id])
+
+    @validates("provider")
+    def _validate_provider(self, _key: str, value: str) -> str:
+        get_provider(value)  # raises UnknownProvider for unregistered IDs
+        return value
 
     @property
     def access_token(self) -> str:
@@ -80,15 +89,66 @@ class LinkedAccount(Base):
         self._refresh_token = encrypt(value)
 
 
-class AnimeIds(Base):
-    """Cross-service ID mapping cache. Filled lazily from AniList idMal / Kitsu mappings."""
+class Media(Base):
+    """One anime, independent of any provider. Provider IDs hang off it via `MediaExternalId`."""
 
-    __tablename__ = "anime_ids"
+    __tablename__ = "media"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    mal_id: Mapped[int | None] = mapped_column(Integer, unique=True)
-    anilist_id: Mapped[int | None] = mapped_column(Integer, unique=True)
-    kitsu_id: Mapped[int | None] = mapped_column(Integer, unique=True)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    episodes: Mapped[int | None] = mapped_column(Integer)
+    cover_url: Mapped[str | None] = mapped_column(Text)
+    cover_color: Mapped[str | None] = mapped_column(String(9))  # "#RRGGBB" tint to show while the cover loads
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class MediaExternalId(Base):
+    """A provider's ID for a `Media`. Every provider's ID is unique, and a media has at most one ID per provider."""
+
+    __tablename__ = "media_external_ids"
+    __table_args__ = (UniqueConstraint("media_id", "provider"),)
+
+    provider: Mapped[str] = mapped_column(String(32), primary_key=True)
+    external_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    media_id: Mapped[int] = mapped_column(ForeignKey("media.id", ondelete="CASCADE"))
+    # Where the link came from: "seed" (offline dataset), "learned" (a provider told us) or "manual" (an admin).
+    # Imports never overwrite or remove manual links.
+    source: Mapped[str] = mapped_column(String(16), default="learned")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    @validates("provider")
+    def _validate_provider(self, _key: str, value: str) -> str:
+        get_provider(value)
+        return value
+
+
+class ListSnapshot(Base):
+    """What we last read from, or wrote to, one linked account for one title (used from Phase 3 on)."""
+
+    __tablename__ = "list_snapshots"
+
+    account_id: Mapped[int] = mapped_column(ForeignKey("linked_accounts.id", ondelete="CASCADE"), primary_key=True)
+    # The title's ID on the account's provider. Always set; `media_id` is only set once the title is mapped.
+    external_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    media_id: Mapped[int | None] = mapped_column(ForeignKey("media.id", ondelete="SET NULL"), index=True)
+    remote_entry_id: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16))
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    score: Mapped[int | None] = mapped_column(Integer)  # 0-100
+    rewatching: Mapped[bool] = mapped_column(Boolean, default=False)
+    started_at: Mapped[date | None] = mapped_column(Date)
+    finished_at: Mapped[date | None] = mapped_column(Date)
+    remote_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Hash of the synced fields at our last write; if the provider's copy differs, it was edited elsewhere.
+    last_written_hash: Mapped[str | None] = mapped_column(String(64))
+    # Display data and ID hints, so the list can be served (and prune safety checked) without asking the provider.
+    title: Mapped[str] = mapped_column(Text, default="")
+    total_episodes: Mapped[int | None] = mapped_column(Integer)
+    image_url: Mapped[str | None] = mapped_column(Text)
+    external_ids: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
