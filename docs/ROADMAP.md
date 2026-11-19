@@ -307,6 +307,14 @@ Design if we do it (nothing built now blocks it; a user with no linked accounts 
 
 ## Phase 5: Frontend  ← next
 
+- [ ] **Landing poster wall (design: canvas "1 · Sign in", 2026-11-19).** Inspired by Sagaline's landing page; the
+      mascot is deferred until a graphic designer delivers one. Full-bleed wall of 8-9 columns of posters drifting
+      vertically (pure CSS `translateY` keyframes, alternating direction, 150-300 s per loop, posters listed twice for a
+      seamless loop), under a surface-coloured scrim (works in light and dark) with one M3 card (headline, provider
+      chips, sign-in buttons). A few posters carry provider monograms as a sync hint. `prefers-reduced-motion` stops the
+      drift; phone crops to about 3 columns; wall is `aria-hidden`, images `alt=""`, lazy-loaded, about 40 titles.
+      Posters come from a small fixed list we store (cover URLs checked against provider `image_hosts`), so the page
+      works signed out. **Before launch:** add "posters on a public page" to the Phase 6 provider-terms check.
 - [ ] **Profile screens (backend done).** Header avatar (initials tile when `avatar_url` is null) and a Settings "Profile"
       card: a name field (`PATCH /api/me`, 1-40 chars) and, per linked account, "use this picture"
       (`PUT /api/me/avatar {account_id}`, reads the provider live; choosing the master again is the "update from master"
