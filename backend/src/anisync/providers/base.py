@@ -22,6 +22,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from functools import lru_cache
 from typing import Any, ClassVar
+from urllib.parse import urlsplit
 
 import httpx
 from aiolimiter import AsyncLimiter
@@ -85,6 +86,7 @@ class TokenSet:
 class RemoteUser:
     id: str
     username: str
+    avatar_url: str | None = None  # the provider's profile picture, if the user has one
 
 
 class RateLimited(Exception):
@@ -154,6 +156,9 @@ class Provider:
     # `fetch_list(since=...)` returns only entries changed after `since` (newest first, stopping early), which makes
     # a sync with nothing new cost one small request instead of a full list read.
     incremental_reads: bool = False
+    # Domains (and their subdomains) the provider serves user-facing images from. Only https URLs on these are stored
+    # and shown, so a stored URL can't point anywhere else.
+    image_hosts: tuple[str, ...] = ()
     # Auth hooks; which ones are set follows from `auth_kind`. No `refresh` means tokens can't be renewed.
     authorize_url: AuthorizeUrl | None = None
     exchange_code: ExchangeCode | None = None
@@ -164,6 +169,16 @@ class Provider:
     def can_sign_in(self) -> bool:
         """Users can sign in to AniSync with this provider (redirect flows only)."""
         return self.auth_kind.is_redirect
+
+    def safe_image_url(self, url: str | None) -> str | None:
+        """The URL if it is https and on one of this provider's image domains, otherwise None."""
+        if not url or len(url) > 500:
+            return None
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
+        if parts.scheme != "https" or not any(host == d or host.endswith(f".{d}") for d in self.image_hosts):
+            return None
+        return url
 
     def title_id_from_url(self, url: str) -> str | None:
         match = self.url_pattern.match(url) if self.url_pattern else None

@@ -70,6 +70,7 @@ class FakeClient(ProviderClient):
     """A provider whose 'remote' list lives in memory. Subclassed per provider id by `register_fake`."""
 
     REMOTE: ClassVar[dict[tuple[str, str], dict[str, ListEntry]]] = {}
+    AVATARS: ClassVar[dict[str, str | None]] = {}  # provider id -> the picture its whoami reports
     FAIL_ON: ClassVar[set[str]] = set()  # media ids whose save raises
     REJECT_TOKENS: ClassVar[bool] = False  # simulate a revoked token
     REQUESTS: ClassVar[list[tuple[str, str]]] = []  # (provider id, "full" | "since" | "save" | "delete")
@@ -85,7 +86,13 @@ class FakeClient(ProviderClient):
         return FakeClient.REMOTE.setdefault((self.provider_id, self.remote_user_id or "1"), {})
 
     async def whoami(self) -> RemoteUser:
-        return RemoteUser(id=self.remote_user_id or "1", username=f"{self.provider_id}_user")
+        if FakeClient.REJECT_TOKENS:
+            raise ReauthRequired("token rejected")
+        return RemoteUser(
+            id=self.remote_user_id or "1",
+            username=f"{self.provider_id}_user",
+            avatar_url=FakeClient.AVATARS.get(self.provider_id),
+        )
 
     async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
         FakeClient.REQUESTS.append((self.provider_id, "full" if since is None else "since"))
@@ -122,6 +129,7 @@ def register_fake(provider_id: str, score_step: int = 1, refresh=None, increment
             rate_limit=(1000, 1),
             client=client,
             incremental_reads=incremental,
+            image_hosts=("img.example.test",),
             refresh=refresh,
         )
     )
@@ -130,6 +138,7 @@ def register_fake(provider_id: str, score_step: int = 1, refresh=None, increment
 def reset_fakes() -> None:
     FakeClient.REMOTE = {}
     FakeClient.FAIL_ON = set()
+    FakeClient.AVATARS = {}
     FakeClient.REJECT_TOKENS = False
     FakeClient.REQUESTS = []
 

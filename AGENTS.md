@@ -19,6 +19,9 @@ Current progress and next steps: **`docs/ROADMAP.md`** (read it first, keep it u
   weekly), not at every scheduled sync (shown to users).
 - No AniSync passwords: users sign in with a redirect-flow provider (OAuth); the first linked account creates the
   user and becomes master. Credential-only providers (Kitsu) are linked afterwards, once signed in.
+- **Profile:** `users.display_name` is editable (1-40 chars, not unique: nobody but the user and admins sees it). The
+  profile picture is a hotlinked provider image the user picks from their linked accounts (`avatar_url`); it never follows
+  master changes, and stored URLs must be https on the provider's `image_hosts`. No uploads (decided 2026-11-19).
 - Mirror options: `sync_enabled`, `prune_missing` (delete mirror entries not on master; off by default).
 - Dry-run preview (`GET /api/sync/preview`) before applying the first sync.
 - **Anime only** (manga out of scope).

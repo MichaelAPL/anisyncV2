@@ -36,6 +36,10 @@ class User(Base):
     banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ban_reason: Mapped[str | None] = mapped_column(String(500))
     banned_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # Profile picture: a provider's image URL (hotlinked, https on that provider's domains), chosen by the user.
+    # It does not follow master changes. None = show initials.
+    avatar_url: Mapped[str | None] = mapped_column(String(500))
+    avatar_provider: Mapped[str | None] = mapped_column(String(32))
 
     accounts: Mapped[list["LinkedAccount"]] = relationship(
         back_populates="user", foreign_keys="LinkedAccount.user_id", cascade="all, delete-orphan", lazy="selectin"
@@ -76,6 +80,7 @@ class LinkedAccount(Base):
     provider: Mapped[str] = mapped_column(String(32))
     remote_user_id: Mapped[str] = mapped_column(String(64))
     remote_username: Mapped[str] = mapped_column(String(100))
+    avatar_url: Mapped[str | None] = mapped_column(String(500))  # this account's profile picture as last seen
     _access_token: Mapped[str] = mapped_column("access_token", Text)
     _refresh_token: Mapped[str | None] = mapped_column("refresh_token", Text)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -177,7 +177,9 @@ async def _link_account(session: Session, user: User | None, provider: Provider,
         if account:
             user = await session.get(User, account.user_id)
         else:
-            user = User(display_name=remote.username)
+            user = User(display_name=remote.username[:40])
+            if avatar := provider.safe_image_url(remote.avatar_url):
+                user.avatar_url, user.avatar_provider = avatar, provider.id  # a starting point; never changes by itself
             session.add(user)
             await session.flush()
     if account is None:
@@ -185,6 +187,7 @@ async def _link_account(session: Session, user: User | None, provider: Provider,
         session.add(account)
 
     account.remote_username = remote.username
+    account.avatar_url = provider.safe_image_url(remote.avatar_url)
     account.access_token = tokens.access_token
     account.refresh_token = tokens.refresh_token
     account.expires_at = tokens.expires_at

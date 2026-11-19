@@ -1,7 +1,9 @@
+import unicodedata
 from datetime import date, datetime, timedelta
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 
 from anisync import jobs, ratelimit, sessions, snapshots, sync
@@ -17,7 +19,7 @@ from anisync.api.schemas import (
 )
 from anisync.models import LinkedAccount, SyncRun, User, UserSession
 from anisync.providers import get_provider
-from anisync.providers.base import ListEntry, ReauthRequired, Status
+from anisync.providers.base import ListEntry, RateLimited, ReauthRequired, Status
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -34,11 +36,14 @@ class AccountOut(BaseModel):
     prune_missing: bool
     last_synced_at: datetime | None
     expires_at: datetime | None
+    avatar_url: str | None  # this account's picture as last seen, for the "use this picture" choice
 
 
 class MeOut(BaseModel):
     id: int
     display_name: str
+    avatar_url: str | None  # None: the UI shows the initials of the name
+    avatar_provider: str | None  # which provider the picture came from
     master_account_id: int | None
     role: str
     permissions: list[str]  # what the UI may show; the server enforces it on every request
@@ -50,6 +55,8 @@ def _me(user: User) -> MeOut:
     return MeOut(
         id=user.id,
         display_name=user.display_name,
+        avatar_url=user.avatar_url,
+        avatar_provider=user.avatar_provider,
         master_account_id=user.master_account_id,
         role=user.role,
         permissions=sorted(user.permissions),
@@ -64,6 +71,7 @@ def _me(user: User) -> MeOut:
                 prune_missing=a.prune_missing,
                 last_synced_at=a.last_synced_at,
                 expires_at=a.expires_at,
+                avatar_url=a.avatar_url,
             )
             for a in sorted(user.accounts, key=lambda a: a.id)
         ],
@@ -89,6 +97,62 @@ async def me(user: CurrentUser) -> MeOut:
 
 class MasterIn(BaseModel):
     account_id: int
+
+
+class ProfileIn(BaseModel):
+    display_name: str = Field(min_length=1, max_length=40)
+
+    @field_validator("display_name")
+    @classmethod
+    def _plain_text(cls, value: str) -> str:
+        if any(unicodedata.category(ch) == "Cc" for ch in value):  # tabs, newlines and other control characters
+            raise ValueError("Use letters, numbers and punctuation only")
+        value = " ".join(value.split())  # trims and collapses spaces
+        if not value or not value.isprintable():
+            raise ValueError("Use letters, numbers and punctuation only")
+        return value
+
+
+@router.patch("/me", dependencies=[ratelimit.per_user("profile", limit=20, window=timedelta(hours=1))])
+async def update_profile(body: ProfileIn, user: CurrentUser, session: Session) -> MeOut:
+    user.display_name = body.display_name
+    await session.commit()
+    return _me(user)
+
+
+class AvatarIn(BaseModel):
+    account_id: int
+
+
+@router.put("/me/avatar", dependencies=[ratelimit.per_user("avatar", limit=10, window=timedelta(minutes=5))])
+async def set_avatar(body: AvatarIn, user: CurrentUser, session: Session) -> MeOut:
+    """Use the profile picture of one of your linked accounts, read from the provider right now. Choosing your master
+    again is how you update the picture after changing it there; nothing here follows a master change by itself."""
+    account = _account(user, body.account_id)
+    provider = get_provider(account.provider)
+    try:
+        remote = await (await sync.client_for(account, session)).whoami()
+    except ReauthRequired as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except RateLimited as exc:
+        raise HTTPException(429, f"{provider.name} is busy, try again in a minute") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"Couldn't reach {provider.name}") from exc
+    url = provider.safe_image_url(remote.avatar_url)
+    account.avatar_url = url
+    if url is None:
+        await session.commit()
+        raise HTTPException(422, f"{provider.name} has no profile picture for this account")
+    user.avatar_url, user.avatar_provider = url, provider.id
+    await session.commit()
+    return _me(user)
+
+
+@router.delete("/me/avatar")
+async def remove_avatar(user: CurrentUser, session: Session) -> MeOut:
+    user.avatar_url = user.avatar_provider = None
+    await session.commit()
+    return _me(user)
 
 
 @router.put("/me/master")

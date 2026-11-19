@@ -83,7 +83,10 @@ class KitsuClient(ProviderClient):
     async def whoami(self) -> RemoteUser:
         data = await self._jsonapi("GET", f"{API}/users", params={"filter[self]": "true"})
         user = data["data"][0]
-        return RemoteUser(id=user["id"], username=user["attributes"]["name"])
+        avatar = user["attributes"].get("avatar") or {}
+        return RemoteUser(
+            id=user["id"], username=user["attributes"]["name"], avatar_url=avatar.get("large") or avatar.get("original")
+        )
 
     async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
         # No incremental reads for Kitsu (`incremental_reads` is off): `since` is ignored and the whole list is read.
@@ -214,6 +217,7 @@ PROVIDER = register(
     Provider(
         id="kitsu",
         name="Kitsu",
+        image_hosts=("kitsu.app",),
         monogram="K",
         colors=ProviderColors(bg="#FDE6E2", fg="#B42318", dark_bg="#5A1A12", dark_fg="#FFB4A8"),
         auth_kind=AuthKind.PASSWORD,

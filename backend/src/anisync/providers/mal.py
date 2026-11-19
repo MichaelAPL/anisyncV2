@@ -105,7 +105,7 @@ class MalClient(ProviderClient):
 
     async def whoami(self) -> RemoteUser:
         data = (await self._request("GET", f"{API}/users/@me")).json()
-        return RemoteUser(id=str(data["id"]), username=data["name"])
+        return RemoteUser(id=str(data["id"]), username=data["name"], avatar_url=data.get("picture"))
 
     async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
         entries: list[ListEntry] = []
@@ -166,6 +166,7 @@ PROVIDER = register(
         colors=ProviderColors(bg="#E3E9F7", fg="#2E51A2", dark_bg="#1F2F5C", dark_fg="#C9D6FF"),
         auth_kind=AuthKind.OAUTH_PKCE_PLAIN,
         incremental_reads=True,
+        image_hosts=("myanimelist.net",),
         score_step=10,
         rate_limit=(1, 1),  # MAL doesn't publish limits; ~1 req/s is safe.
         client=MalClient,

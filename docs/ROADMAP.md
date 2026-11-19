@@ -20,6 +20,7 @@ Update this file at the end of every working session. Work the phases in order; 
 - **Phase 1 done** (tasks 1.0–1.7). Migrations `3f1a7c2b9d40`, `8c4d1e6a2b57`.
 - **Phase 2 done** (security hardening, see below). Migration `a7d3c9e15f02`.
 - **Phase 3 done** (sync efficiency, see below). Migration `c5e2b8f94a13`. 268 backend tests.
+- **Profile (display name + picture) done 2026-11-19** (migration `f2c6e9a41b78`, 332 backend tests): `PATCH /api/me`, `PUT|DELETE /api/me/avatar`, see Phase 5 for the screens.
 - **Phase 4 in progress:** 4.0 roles, 4.1 bans and 4.2 sync events done (migrations `d6f3a9b7c201`, `e8b4c1d92a65`, 297 backend tests).
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
@@ -305,6 +306,13 @@ Design if we do it (nothing built now blocks it; a user with no linked accounts 
       "no linked accounts yet".
 
 ## Phase 5: Frontend
+
+- [ ] **Profile screens (backend done).** Header avatar (initials tile when `avatar_url` is null) and a Settings "Profile"
+      card: a name field (`PATCH /api/me`, 1-40 chars) and, per linked account, "use this picture"
+      (`PUT /api/me/avatar {account_id}`, reads the provider live; choosing the master again is the "update from master"
+      action, nothing follows a master change by itself) plus "remove" (`DELETE /api/me/avatar`). Add these to the canvas
+      first (Settings, header, admin user detail). Pictures are hotlinked and only stored when https on the provider's
+      `image_hosts`; apply the same check to anime covers. MAL's `picture` field is unverified until a Client ID exists.
 
 - [ ] Public pages (landing, about, privacy) prerendered to static HTML at build time for SEO and future ads;
       the logged-in app stays a plain SPA. No Next.js needed.

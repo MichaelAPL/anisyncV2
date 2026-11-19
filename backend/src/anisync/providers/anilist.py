@@ -87,7 +87,7 @@ query ($userId: Int, $page: Int) {
 
 ENTRY_ID_QUERY = "query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { id } }"
 DELETE_MUTATION = "mutation ($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }"
-VIEWER_QUERY = "{ Viewer { id name } }"
+VIEWER_QUERY = "{ Viewer { id name avatar { large } } }"
 # Batch ID lookups (used by the ID resolver). perPage max is 50.
 BY_MAL_IDS = "query ($ids: [Int]) { Page(perPage: 50) { media(idMal_in: $ids, type: ANIME) { id idMal } } }"
 BY_IDS = "query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids, type: ANIME) { id idMal } } }"
@@ -158,7 +158,13 @@ class AniListClient(ProviderClient):
 
     async def whoami(self) -> RemoteUser:
         viewer = (await self.gql(VIEWER_QUERY))["Viewer"]
-        return RemoteUser(id=str(viewer["id"]), username=viewer["name"])
+        avatar = ((viewer.get("avatar") or {}).get("large")) or ""
+        # Users without a picture get AniList's placeholder; that isn't a picture worth copying.
+        return RemoteUser(
+            id=str(viewer["id"]),
+            username=viewer["name"],
+            avatar_url=None if not avatar or avatar.endswith("/default.png") else avatar,
+        )
 
     @staticmethod
     def _entry(e: dict[str, Any]) -> ListEntry:
@@ -266,6 +272,7 @@ PROVIDER = register(
         colors=ProviderColors(bg="#DDF3FF", fg="#0369A1", dark_bg="#0B3550", dark_fg="#A8DDFF"),
         auth_kind=AuthKind.OAUTH_CODE,
         incremental_reads=True,
+        image_hosts=("anilist.co",),
         score_step=1,
         rate_limit=(25, 60),  # AniList allows ~90/min but is sometimes degraded to 30/min: stay under that
         client=AniListClient,
