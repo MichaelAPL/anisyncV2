@@ -14,7 +14,7 @@ from typing import Literal
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from anisync import snapshots, switches
+from anisync import snapshots, switches, unmatched
 from anisync.engine import Plan, plan_sync
 from anisync.logs import redact
 from anisync.mapping import IdMapper
@@ -207,6 +207,7 @@ async def run_sync(
                     for c in plan.changes
                 ]
             else:
+                await unmatched.record(session, user.id, master.provider, mirror.provider, plan.unmapped)
                 result["errors"] = await apply_plan(session, mirror, client, plan, events)
                 mirror.last_synced_at = datetime.now(UTC)
         except ReauthRequired as exc:

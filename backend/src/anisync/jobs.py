@@ -12,7 +12,7 @@ import httpx
 from procrastinate import App, PsycopgConnector, RetryStrategy
 from procrastinate.exceptions import AlreadyEnqueued
 
-from anisync import metrics, ratelimit, seed, sessions, switches, sync
+from anisync import metrics, ratelimit, seed, sessions, switches, sync, unmatched
 from anisync.config import get_settings
 from anisync.db import SessionLocal
 from anisync.providers.base import ListEntry, RateLimited
@@ -59,7 +59,14 @@ async def housekeeping(timestamp: int) -> None:
         expired = await sessions.purge_expired(session)
         attempts = await ratelimit.purge_old(session)
         runs = await sync.purge_runs(session)
-    log.info("housekeeping: removed %s sessions, %s rate-limit rows, %s sync runs", expired, attempts, runs)
+        titles = await unmatched.purge(session)
+    log.info(
+        "housekeeping: removed %s sessions, %s rate-limit rows, %s sync runs, %s unmatched titles",
+        expired,
+        attempts,
+        runs,
+        titles,
+    )
 
 
 @app.periodic(cron=settings.id_dataset_cron, periodic_id="seed-ids")
@@ -68,6 +75,13 @@ async def seed_ids(timestamp: int) -> None:
     """Import the offline ID dataset if there is a new version (cheap otherwise: only its first line is read)."""
     async with SessionLocal() as session:
         await seed.run_import(session)
+
+
+@app.task(queue="maintenance", queueing_lock="seed-ids-now", retry=TRANSIENT)
+async def import_dataset(force: bool = False) -> None:
+    """The same import, started by an admin (`force` re-imports a version that was already imported)."""
+    async with SessionLocal() as session:
+        await seed.run_import(session, force=force)
 
 
 @app.task(queue="sync", retry=TRANSIENT)

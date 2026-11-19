@@ -6,6 +6,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -339,3 +340,37 @@ class ProviderSetting(Base):
     paused_reason: Mapped[str | None] = mapped_column(String(500))
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     changed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class UnmatchedTitle(Base):
+    """A title on someone's master list that has no equivalent on a mirror's provider (yet). Admins can link them by
+    hand. Rows go away when the title becomes mapped or hasn't been seen for a month."""
+
+    __tablename__ = "unmatched_titles"
+
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)  # the master's provider
+    source_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    target: Mapped[str] = mapped_column(String(32), primary_key=True)  # the mirror's provider
+    title: Mapped[str] = mapped_column(String(255))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+
+
+class UnmatchedTitleUser(Base):
+    """Which users currently have an unmatched title (so the admin queue can show how many are affected)."""
+
+    __tablename__ = "unmatched_title_users"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source", "source_id", "target"],
+            ["unmatched_titles.source", "unmatched_titles.source_id", "unmatched_titles.target"],
+            ondelete="CASCADE",
+        ),
+    )
+
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    target: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)

@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from anisync import jobs, logs, metrics, moderation
-from anisync.api import admin, admin_site, admin_syncs, admin_users, auth, public, routes
+from anisync.api import admin, admin_dataset, admin_site, admin_syncs, admin_titles, admin_users, auth, public, routes
 from anisync.config import get_settings
 from anisync.db import SessionLocal
 from anisync.security import CsrfMiddleware, RequestIdMiddleware
@@ -65,4 +65,6 @@ app.include_router(admin.router)
 app.include_router(admin_syncs.router)
 app.include_router(admin_users.router)
 app.include_router(admin_site.router)
+app.include_router(admin_dataset.router)
+app.include_router(admin_titles.router)
 app.include_router(public.router)

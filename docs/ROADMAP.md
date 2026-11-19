@@ -21,7 +21,7 @@ Update this file at the end of every working session. Work the phases in order; 
 - **Phase 2 done** (security hardening, see below). Migration `a7d3c9e15f02`.
 - **Phase 3 done** (sync efficiency, see below). Migration `c5e2b8f94a13`. 268 backend tests.
 - **Profile (display name + picture) done 2026-11-19** (migration `f2c6e9a41b78`, 332 backend tests): `PATCH /api/me`, `PUT|DELETE /api/me/avatar`, see Phase 5 for the screens.
-- **Phase 4 in progress:** 4.0-4.7, 4.9-4.11 done (roles, bans, sync events, stats, sync status, user lookup, provider kill switch, job controls, banner and maintenance, user actions, expiring connections; migrations `d6f3a9b7c201`, `e8b4c1d92a65`, `a9e1d4c7b630`, `b4f7a2c9d815`; 419 backend tests). Left: 4.8 unmatched titles, 4.12 dataset status.
+- **Phase 4 done (backend):** 4.0-4.12, the whole Phase 4 backend (roles, bans, sync events, stats, sync status, user lookup, provider kill switch, job controls, unmatched titles, banner and maintenance, user actions, expiring connections, dataset status; migrations `d6f3a9b7c201`, `e8b4c1d92a65`, `a9e1d4c7b630`, `b4f7a2c9d815`, `c8d2e5a1f947`; 443 backend tests). The admin screens are built in Phase 5.
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
 
@@ -207,7 +207,7 @@ mismatch: entries **hidden from the status lists and in no custom list** appear 
 Known limits: removals on the master's site are noticed only by a full read (weekly); an edit made on the master's site
 in the same second as the cursor can be missed until the next full read.
 
-## Phase 4: Admin  ← next
+## Phase 4: Admin  ✔ backend done 2026-11-19 (screens in Phase 5)
 
 Requirements (user, 2026-11-17): site and user statistics; status and logs of the daily/weekly syncs; look up a
 specific user, check their status, and ban them.
@@ -260,7 +260,7 @@ Stack notes (checked 2026-11-17, no stack change needed):
       providers are skipped by sync and `push_entry` (jobs deferred, not failed) and the UI says so.
 - [x] **4.7 Job controls.** *(done: `PUT /api/admin/syncs/scheduled {paused}` (`syncs.control`) stops the hourly tick and skips queued sync/push jobs, which is safe because the next sync catches up from snapshots; `GET /api/admin/syncs/jobs?status=todo|doing|failed`, `POST .../jobs/{id}/cancel` (`syncs.control`, `abort=true` for running ones) and `.../retry` (`syncs.retry`, queues a copy of a failed or cancelled job). Job lists show ids only, never list data. All audited. Not verified against a real Procrastinate database: the tests use the in-memory connector.)*  Original spec:  Pause/resume scheduled syncs globally (flag in DB, checked by the periodic
       tasks); retry failed jobs, cancel stuck jobs (Procrastinate job manager).
-- [ ] **4.8 Unmatched titles queue.** Entries the resolver couldn't map (recorded during sync, with counts of how
+- [x] **4.8 Unmatched titles queue.** *(done: every applied sync records the titles it couldn't translate (`unmatched_titles`, plus `unmatched_title_users` for the affected-user count; a user's set is replaced on each sync); `GET /api/admin/titles/unmatched?source=&target=&q=` (most affected first, titles mapped since are left out), `POST /api/admin/titles/link {source, source_id, target, target_id}` (`titles.link`; stored as `source=manual`, 409 on conflicts, audited; affected users get it at their next sync). Daily housekeeping purges resolved rows and rows unseen for 30 days. Migration `c8d2e5a1f947`.)*  Original spec:  Entries the resolver couldn't map (recorded during sync, with counts of how
       many users have them). Admin links IDs by hand → writes `media_external_ids` rows marked `source=manual`, which
       the dataset import (1.7) never overwrites. Affected users get it at their next sync.
 - [x] **4.9 Site banner + maintenance mode.** *(done: `site_settings`; public `GET /api/site` (banner text and level, maintenance flag and message); `GET|PUT /api/admin/site` (`site.manage`, plain text only, `<`/`>` refused, audited by changed field). Maintenance mode answers every write with 503 + `Retry-After` through an app-wide dependency, except `/api/admin/*` and sign-out, and pauses the background jobs. The UI must render banner text as text. Migration `b4f7a2c9d815`.)*  Original spec:  Banner text/level stored in DB, shown by the frontend
@@ -270,7 +270,7 @@ Stack notes (checked 2026-11-17, no stack change needed):
       MAL §3(c); reuse for self-service account deletion).
 - [x] **4.11 Expiring AniList tokens.** *(done: `GET /api/admin/accounts/expiring?days=30` (`users.read`, soonest first, `expired` vs `expiring`, only connections we can't renew themselves); `/api/me` accounts now carry `needs_relink` and `expires_soon` for the on-site banner.)*  Original spec:  List accounts whose token expires within 30 days, and show users an
       on-site banner before it does (we have no emails: MAL/AniList sign-in doesn't give us one).
-- [ ] **4.12 Dataset import status.** Last run of the 1.7 import, rows added/changed, coverage per provider, errors;
+- [x] **4.12 Dataset import status.** *(done: `GET /api/admin/dataset` (last 10 imports, titles in the mapping, ids per provider split seed/learned/manual; `stats.read`) and `POST /api/admin/dataset/import {force}` (`providers.manage`, refused while one runs, audited).)*  Original spec:  Last run of the 1.7 import, rows added/changed, coverage per provider, errors;
       button to re-run.
 - [ ] Tests: authorization (every `/api/admin` route declares a permission, checked by a test that walks the router;
       users without it and banned users get 403; bootstrap promotes but never demotes; last `roles.manage` holder
@@ -305,7 +305,7 @@ Design if we do it (nothing built now blocks it; a user with no linked accounts 
       registrations older than 7 days; admin lookup shows email and verified status; frontend onboarding state for
       "no linked accounts yet".
 
-## Phase 5: Frontend
+## Phase 5: Frontend  ← next
 
 - [ ] **Profile screens (backend done).** Header avatar (initials tile when `avatar_url` is null) and a Settings "Profile"
       card: a name field (`PATCH /api/me`, 1-40 chars) and, per linked account, "use this picture"
