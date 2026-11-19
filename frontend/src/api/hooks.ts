@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from './client'
-import type { Me, MirrorResult, ProviderInfo, Site } from './types'
+import type { EntryInput, ListEntry, Me, MirrorResult, ProviderInfo, SessionInfo, Site, SyncRun } from './types'
 
 /** The signed-in user, or null when signed out (a 401 is an answer, not an error). */
 export function useMe() {
@@ -64,3 +64,39 @@ export function useStartSync() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
   })
 }
+
+export const useRuns = (poll = false) =>
+  useQuery({
+    queryKey: ['runs'],
+    queryFn: () => api<SyncRun[]>('/api/sync/runs'),
+    refetchInterval: poll ? 3000 : false,
+  })
+
+export const useList = () => useQuery({ queryKey: ['list'], queryFn: () => api<ListEntry[]>('/api/list'), staleTime: 60_000 })
+
+export function useSaveEntry() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { mediaId: string; entry: EntryInput }) =>
+      api<{ ok: boolean; queued_mirrors: number }>(`/api/list/${v.mediaId}`, { method: 'PUT', json: v.entry }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['list'] }),
+  })
+}
+
+export function useRemoveEntry() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (mediaId: string) => api<{ ok: boolean }>(`/api/list/${mediaId}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['list'] }),
+  })
+}
+
+export function useRefreshList() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<{ mode: string; changed: number }>('/api/list/refresh', { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['list'] }),
+  })
+}
+
+export const useSessions = () => useQuery({ queryKey: ['sessions'], queryFn: () => api<SessionInfo[]>('/api/sessions') })

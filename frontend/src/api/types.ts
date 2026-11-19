@@ -59,6 +59,49 @@ export interface MirrorResult {
   unmapped: number
   unmapped_titles: string[]
   changes?: Change[]
+  errors?: string[]
   error?: string
   reauth_required?: boolean
+}
+
+export interface SyncRun {
+  id: number
+  trigger: string
+  status: string
+  summary: Record<string, MirrorResult>
+  started_at: string
+  finished_at: string | null
+}
+
+export type Status = 'watching' | 'completed' | 'on_hold' | 'dropped' | 'planning'
+
+export interface ListEntry {
+  media_id: string
+  status: Status
+  progress: number
+  score: number | null // 0-100
+  rewatching: boolean
+  started_at: string | null
+  finished_at: string | null
+  updated_at: string | null
+  title: string
+  total_episodes: number | null
+  image_url: string | null
+}
+
+export interface EntryInput {
+  status: Status
+  progress: number
+  score: number | null
+  rewatching: boolean
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface SessionInfo {
+  id: number
+  created_at: string
+  last_seen_at: string
+  user_agent: string
+  current: boolean
 }
