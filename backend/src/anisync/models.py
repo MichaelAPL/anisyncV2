@@ -235,12 +235,14 @@ class SyncRun(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     trigger: Mapped[str] = mapped_column(String(20))  # scheduled | manual | edit
-    status: Mapped[str] = mapped_column(String(20), default="running")  # running | ok | error
+    status: Mapped[str] = mapped_column(String(20), default="running")  # running | ok | error | interrupted
     # {"<account_id>": {"created": n, "updated": n, "deleted": n, "unmapped": [...], "errors": [...]}}
     summary: Mapped[dict] = mapped_column(JSON, default=dict)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     changes: Mapped[int] = mapped_column(default=0, server_default="0")  # entries created, updated or deleted
+    planned: Mapped[int] = mapped_column(default=0, server_default="0")  # changes the run set out to make so far
+    processed: Mapped[int] = mapped_column(default=0, server_default="0")  # of those, attempted (done or failed)
 
 
 class SyncRunEvent(Base):

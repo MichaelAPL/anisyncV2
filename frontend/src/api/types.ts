@@ -72,6 +72,8 @@ export interface SyncRun {
   summary: Record<string, MirrorResult>
   started_at: string
   finished_at: string | null
+  planned: number
+  processed: number
 }
 
 export type Status = 'watching' | 'completed' | 'on_hold' | 'dropped' | 'planning'

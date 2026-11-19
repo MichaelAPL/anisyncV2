@@ -84,3 +84,5 @@ class SyncRunOut(BaseModel):
     summary: dict[str, MirrorResultOut]
     started_at: datetime
     finished_at: datetime | None
+    planned: int = 0  # while running: how many changes it set out to make so far...
+    processed: int = 0  # ...and how many of them are done (or failed)

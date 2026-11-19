@@ -6,12 +6,13 @@ A full read of an account happens when it has none yet, at least weekly (that is
 directly on a provider's site), when the provider can't read incrementally (master only), or when asked for.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from anisync import snapshots, switches, unmatched
@@ -111,23 +112,67 @@ class Event:
     media_ref: str | None = None
 
 
-async def apply_plan(
-    session: AsyncSession, mirror: LinkedAccount, client: ProviderClient, plan: Plan, events: list[Event] | None = None
-) -> list[str]:
-    """Write the plan to the provider, then record what succeeded in the mirror's snapshot.
+BATCH = 25  # changes written between saves: progress is visible and an interrupted sync keeps what it did
+RATE_LIMIT_RETRIES = 3
+MAX_WAIT = 60.0  # never sleep longer than this for one "retry after"
 
-    A change that fails is left out of the snapshot, so the next sync plans it again. Failures are also appended to
-    `events` (structured, for the admin sync log) when it is given."""
-    errors, written, deleted = [], [], []
-    for change in plan.changes:
+
+async def _pause(seconds: float) -> None:
+    await asyncio.sleep(seconds)  # a function of its own so tests can skip the wait
+
+
+async def _write(client: ProviderClient, change) -> None:
+    """One change, waiting out a provider's "slow down" (up to a few times) instead of failing every change after it."""
+    for attempt in range(RATE_LIMIT_RETRIES + 1):
         try:
             if change.op == "delete":
                 await client.delete_entry(change.media_id, change.current.remote_entry_id if change.current else None)
-                deleted.append(change.media_id)
             else:
                 await client.save_entry(change.desired)
+            return
+        except RateLimited as exc:
+            if attempt == RATE_LIMIT_RETRIES:
+                raise
+            await _pause(min(exc.retry_after or 5.0, MAX_WAIT) + 1)
+
+
+async def apply_plan(
+    session: AsyncSession,
+    mirror: LinkedAccount,
+    client: ProviderClient,
+    plan: Plan,
+    events: list[Event] | None = None,
+    run: SyncRun | None = None,
+) -> list[str]:
+    """Write the plan to the provider, then record what succeeded in the mirror's snapshot.
+
+    Results are saved every `BATCH` changes, so a long sync shows progress (`run.planned`/`run.processed`) and an
+    interrupted one keeps what it did. A change that fails is left out of the snapshot, so the next sync plans it
+    again. Failures are also appended to `events` (structured, for the admin sync log) when it is given."""
+    step = get_provider(mirror.provider).score_step
+    errors: list[str] = []
+    written: list[ListEntry] = []
+    deleted: list[str] = []
+
+    async def save() -> None:
+        await snapshots.upsert(session, mirror.id, written, step)
+        await snapshots.remove(session, mirror.id, deleted)
+        written.clear()
+        deleted.clear()
+        await session.commit()
+
+    if run is not None:
+        run.planned += len(plan.changes)
+        await session.commit()
+    for done, change in enumerate(plan.changes, start=1):
+        try:
+            await _write(client, change)
+            if change.op == "delete":
+                deleted.append(change.media_id)
+            else:
                 written.append(change.desired)
         except ReauthRequired:
+            await save()
             raise
         except Exception as exc:  # keep going; one bad entry shouldn't block the rest
             log.warning("sync change failed: %s %s: %s", change.op, change.media_id, exc)
@@ -143,10 +188,11 @@ async def apply_plan(
                         change.media_id,
                     )
                 )
-    step = get_provider(mirror.provider).score_step
-    await snapshots.upsert(session, mirror.id, written, step)
-    await snapshots.remove(session, mirror.id, deleted)
-    await session.commit()
+        if run is not None:
+            run.processed += 1
+        if done % BATCH == 0:
+            await save()
+    await save()
     return errors
 
 
@@ -166,6 +212,17 @@ async def running_run(session: AsyncSession, user_id: int) -> SyncRun | None:
         .order_by(SyncRun.id.desc())
         .limit(1)
     )
+
+
+async def close_interrupted_runs(session: AsyncSession, everything: bool = False) -> int:
+    """Mark runs that stopped halfway (the process died or was restarted) as `interrupted` instead of leaving them
+    "running". `everything` also closes young ones: right after a start no run of this process can be in progress."""
+    stmt = update(SyncRun).where(SyncRun.finished_at.is_(None))
+    if not everything:
+        stmt = stmt.where(SyncRun.started_at <= datetime.now(UTC) - RUN_STALE_AFTER)
+    result = await session.execute(stmt.values(status="interrupted", finished_at=datetime.now(UTC)))
+    await session.commit()
+    return result.rowcount or 0
 
 
 async def start_run(session: AsyncSession, user_id: int, trigger: str) -> SyncRun | None:
@@ -253,7 +310,7 @@ async def _sync_mirrors(
                 ]
             else:
                 await unmatched.record(session, user.id, master.provider, mirror.provider, plan.unmapped)
-                result["errors"] = await apply_plan(session, mirror, client, plan, events)
+                result["errors"] = await apply_plan(session, mirror, client, plan, events, run)
                 mirror.last_synced_at = datetime.now(UTC)
         except ReauthRequired as exc:
             result = {"error": str(exc), "reauth_required": True}

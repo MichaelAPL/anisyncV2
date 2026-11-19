@@ -125,6 +125,8 @@ async def test_sync_history_follows_the_response_schema(alice, session):
         "summary",
         "started_at",
         "finished_at",
+        "planned",
+        "processed",
     }
 
 

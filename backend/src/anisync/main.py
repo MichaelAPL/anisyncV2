@@ -7,7 +7,7 @@ import httpx
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from anisync import jobs, logs, metrics, moderation
+from anisync import jobs, logs, metrics, moderation, sync
 from anisync.api import admin, admin_dataset, admin_site, admin_syncs, admin_titles, admin_users, auth, public, routes
 from anisync.config import get_settings
 from anisync.db import SessionLocal
@@ -24,6 +24,10 @@ settings = get_settings()
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     async with SessionLocal() as session:
         promoted = await moderation.bootstrap_admins(session)
+        if settings.run_worker_in_process:  # this process runs the syncs, so any run left open belongs to a dead one
+            stopped = await sync.close_interrupted_runs(session, everything=True)
+            if stopped:
+                log.warning("closed %s sync run(s) interrupted by the last shutdown", stopped)
     if promoted:
         log.info("promoted %s user(s) to admin from ADMIN_USER_IDS", promoted)
     async with jobs.app.open_async():

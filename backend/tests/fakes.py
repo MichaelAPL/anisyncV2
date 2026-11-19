@@ -11,6 +11,7 @@ from anisync.providers.base import (
     Provider,
     ProviderClient,
     ProviderColors,
+    RateLimited,
     ReauthRequired,
     RemoteUser,
 )
@@ -73,6 +74,8 @@ class FakeClient(ProviderClient):
     AVATARS: ClassVar[dict[str, str | None]] = {}  # provider id -> the picture its whoami reports
     FAIL_ON: ClassVar[set[str]] = set()  # media ids whose save raises
     REJECT_TOKENS: ClassVar[bool] = False  # simulate a revoked token
+    RATE_LIMITED: ClassVar[dict[str, int]] = {}  # media id -> how many saves are refused with 'retry after 30s'
+    REAUTH_ON: ClassVar[str | None] = None  # media id whose save says the token was revoked
     FETCH_ERROR: ClassVar[Exception | None] = None  # raised by every list read (an outage, a timeout)
     REQUESTS: ClassVar[list[tuple[str, str]]] = []  # (provider id, "full" | "since" | "save" | "delete")
     _clock: ClassVar[int] = 0
@@ -109,6 +112,11 @@ class FakeClient(ProviderClient):
     async def save_entry(self, entry: ListEntry) -> None:
         if entry.media_id in FakeClient.FAIL_ON:
             raise RuntimeError(f"cannot save {entry.media_id}")
+        if entry.media_id == FakeClient.REAUTH_ON:
+            raise ReauthRequired("revoked")
+        if FakeClient.RATE_LIMITED.get(entry.media_id, 0) > 0:
+            FakeClient.RATE_LIMITED[entry.media_id] -= 1
+            raise RateLimited(self.provider_id, 30.0)
         FakeClient.REQUESTS.append((self.provider_id, "save"))
         self._store()[entry.media_id] = replace(
             entry, remote_entry_id=f"entry-{entry.media_id}", updated_at=FakeClient.stamp()
@@ -144,6 +152,8 @@ def reset_fakes() -> None:
     FakeClient.AVATARS = {}
     FakeClient.REJECT_TOKENS = False
     FakeClient.FETCH_ERROR = None
+    FakeClient.RATE_LIMITED = {}
+    FakeClient.REAUTH_ON = None
     FakeClient.REQUESTS = []
 
 

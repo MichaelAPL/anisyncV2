@@ -60,6 +60,9 @@ async def housekeeping(timestamp: int) -> None:
         attempts = await ratelimit.purge_old(session)
         runs = await sync.purge_runs(session)
         titles = await unmatched.purge(session)
+        stopped = await sync.close_interrupted_runs(session)
+    if stopped:
+        log.warning("housekeeping: closed %s sync run(s) that stopped halfway", stopped)
     log.info(
         "housekeeping: removed %s sessions, %s rate-limit rows, %s sync runs, %s unmatched titles",
         expired,

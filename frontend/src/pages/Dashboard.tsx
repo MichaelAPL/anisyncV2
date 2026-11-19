@@ -34,7 +34,8 @@ export function Dashboard() {
   const name = (id: string) => providers.data?.find((p) => p.id === id)?.name ?? id
 
   const latest = runs.data?.[0]
-  const runningNow = (runs.data ?? []).some(isRunning)
+  const running = (runs.data ?? []).find(isRunning)
+  const runningNow = running !== undefined
   // After a click there can be a short gap before the run row exists: stay busy until a run since the click has finished.
   const finishedSinceClick = clicked !== null && !!latest?.finished_at && new Date(latest.started_at).getTime() >= clicked
   const syncing = runningNow || (clicked !== null && !expired && !finishedSinceClick)
@@ -88,7 +89,7 @@ export function Dashboard() {
               </Link>
               <button type="button" className="btn btn-filled" disabled={start.isPending || syncing}
                 onClick={() => start.mutate(undefined, { onSuccess: () => { setExpired(false); setClicked(Date.now() - 2000) } })}>
-                <Icon name="sync" size={18} /> {syncing ? 'Syncing…' : 'Sync now'}
+                <Icon name="sync" size={18} /> {syncing ? (running && running.planned > 0 ? `Syncing ${running.processed} of ${running.planned}…` : 'Syncing…') : 'Sync now'}
               </button>
             </div>
           </section>
@@ -133,7 +134,8 @@ export function Dashboard() {
           <h2 id="activity-h" className="title-l" style={{ padding: '16px 16px 8px' }}>Recent activity</h2>
           <div className="list">
             {(runs.data ?? []).filter((r) => r.trigger !== 'preview').slice(0, 8).map((r) => {
-              const bad = Object.values(r.summary).some((m) => failures(m) > 0) || r.status === 'failed'
+              const interrupted = r.status === 'interrupted'
+              const bad = !interrupted && (Object.values(r.summary).some((m) => failures(m) > 0) || r.status === 'failed')
               return (
                 <div key={r.id} className="list-item">
                   <span className="avatar" style={{ background: 'var(--sc-high)', color: 'var(--on-surface-variant)' }}>
@@ -141,9 +143,11 @@ export function Dashboard() {
                   </span>
                   <div className="list-text">
                     <span className="title-s">{TRIGGER[r.trigger] ?? r.trigger}</span>
-                    <span className="body-m muted">{clock(r.started_at)} · {summarize(r, name)}</span>
+                    <span className="body-m muted">{clock(r.started_at)} · {interrupted ? 'Stopped before it finished. Anything it didn\'t get to is retried on the next sync' : summarize(r, name)}</span>
                   </div>
-                  <span className={`tag ${bad ? 'tag-err' : r.finished_at ? 'tag-ok' : 'tag-info'}`}>{bad ? 'Errors' : r.finished_at ? 'Done' : 'Running'}</span>
+                  <span className={`tag ${interrupted ? 'tag-warn' : bad ? 'tag-err' : r.finished_at ? 'tag-ok' : 'tag-info'}`}>
+                    {interrupted ? 'Interrupted' : bad ? 'Errors' : r.finished_at ? 'Done' : r.planned > 0 ? `Running · ${r.processed} of ${r.planned}` : 'Running'}
+                  </span>
                 </div>
               )
             })}

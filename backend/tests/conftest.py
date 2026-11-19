@@ -154,3 +154,17 @@ def fakes():
     yield f.FakeClient
     f.unregister_fakes()
     f.reset_fakes()
+
+
+@pytest.fixture(autouse=True)
+def no_real_waiting(monkeypatch):
+    """Waiting out a provider's "retry after" is skipped in tests; the requested pauses are recorded instead."""
+    from anisync import sync
+
+    pauses: list[float] = []
+
+    async def pause(seconds: float) -> None:
+        pauses.append(seconds)
+
+    monkeypatch.setattr(sync, "_pause", pause)
+    return pauses

@@ -41,7 +41,7 @@ describe('dashboard', () => {
   })
 
   it('disables Sync now while a sync is running, even one this tab did not start', async () => {
-    const running = [{ id: 1, trigger: 'scheduled', status: 'running', started_at: new Date(Date.now() - 60_000).toISOString(), finished_at: null, summary: {} }]
+    const running = [{ id: 1, trigger: 'scheduled', status: 'running', started_at: new Date(Date.now() - 60_000).toISOString(), finished_at: null, summary: {}, planned: 0, processed: 0 }]
     stubApi({ 'GET /api/sync/runs': running })
     renderRoute('/dashboard')
     const button = await screen.findByRole('button', { name: /syncing/i })
@@ -56,8 +56,25 @@ describe('dashboard', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('A sync is already running.')
   })
 
+  it('shows how far a running sync has got', async () => {
+    const running = [{ id: 1, trigger: 'manual', status: 'running', started_at: new Date(Date.now() - 60_000).toISOString(), finished_at: null, summary: {}, planned: 300, processed: 40 }]
+    stubApi({ 'GET /api/sync/runs': running })
+    renderRoute('/dashboard')
+    expect(await screen.findByRole('button', { name: /syncing 40 of 300/i })).toBeDisabled()
+    expect(screen.getByText('Running · 40 of 300')).toBeInTheDocument()
+  })
+
+  it('shows a run that stopped halfway as interrupted, not running', async () => {
+    const stopped = [{ id: 1, trigger: 'manual', status: 'interrupted', started_at: new Date(Date.now() - 3_600_000).toISOString(), finished_at: new Date().toISOString(), summary: {}, planned: 300, processed: 40 }]
+    stubApi({ 'GET /api/sync/runs': stopped })
+    renderRoute('/dashboard')
+    expect(await screen.findByText('Interrupted')).toBeInTheDocument()
+    expect(screen.queryByText(/running/i)).toBeNull()
+    expect(screen.getByRole('button', { name: /sync now/i })).toBeEnabled()
+  })
+
   it('does not let a run that never finished block the button forever', async () => {
-    const stale = [{ id: 1, trigger: 'scheduled', status: 'running', started_at: new Date(Date.now() - 20 * 60_000).toISOString(), finished_at: null, summary: {} }]
+    const stale = [{ id: 1, trigger: 'scheduled', status: 'running', started_at: new Date(Date.now() - 20 * 60_000).toISOString(), finished_at: null, summary: {}, planned: 0, processed: 0 }]
     stubApi({ 'GET /api/sync/runs': stale })
     renderRoute('/dashboard')
     expect(await screen.findByRole('button', { name: /sync now/i })).toBeEnabled()
