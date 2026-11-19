@@ -69,6 +69,8 @@ class MirrorResultOut(BaseModel):
     unmapped_titles: list[str] = []
     changes: list[ChangeOut] | None = None  # previews only
     errors: list[str] | None = None  # applied syncs only
+    skipped: int | None = None  # changes the provider hides from us (not failures), see `skipped_reason`
+    skipped_reason: str | None = None
     error: str | None = None
     reauth_required: bool | None = None
     read: Literal["full", "incremental", "snapshot"] | None = None  # how the mirror's current state was learned

@@ -122,6 +122,12 @@ export function Dashboard() {
                     <div><dt className="body-s muted">Last synced</dt><dd className="title-s" style={{ margin: 0 }}>{relative(a.last_synced_at)}</dd></div>
                     <div><dt className="body-s muted">Unmatched titles</dt><dd className="title-s" style={{ margin: 0 }}>{r?.unmapped ?? '–'}</dd></div>
                   </dl>
+                  {!!r?.skipped && (
+                    <p className="body-m muted" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                      <Icon name="info" size={18} style={{ flex: 'none', marginTop: 1 }} />
+                      <span>{r.skipped} {r.skipped === 1 ? 'title was' : 'titles were'} skipped: {r.skipped_reason}.</span>
+                    </p>
+                  )}
                   {a.needs_relink && <a href={`/auth/${a.provider}/login`} className="btn btn-tonal" style={{ alignSelf: 'flex-start' }}>Reconnect</a>}
                 </article>
               )

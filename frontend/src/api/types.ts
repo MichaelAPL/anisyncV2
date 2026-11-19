@@ -61,6 +61,8 @@ export interface MirrorResult {
   unmapped_titles: string[]
   changes?: Change[]
   errors?: string[]
+  skipped?: number
+  skipped_reason?: string
   error?: string
   reauth_required?: boolean
 }

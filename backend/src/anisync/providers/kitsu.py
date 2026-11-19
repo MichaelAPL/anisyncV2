@@ -9,9 +9,12 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
+
 from anisync.http import client as http_client
 from anisync.providers.base import (
     AuthKind,
+    ChangeSkipped,
     ListEntry,
     Provider,
     ProviderClient,
@@ -168,21 +171,51 @@ class KitsuClient(ProviderClient):
             attributes["finishedAt"] = entry.finished_at.isoformat()
 
         entry_id = entry.remote_entry_id or await self._find_entry_id(entry.media_id)
+        try:
+            await self._send(entry_id, entry.media_id, attributes)
+        except httpx.HTTPStatusError as exc:
+            reason = str(exc)
+            if exc.response.status_code != 422:
+                raise
+            if "already been taken" in reason:
+                # The entry exists but Kitsu doesn't list it for us: adult titles are hidden while the account's
+                # "SFW filter" is on, so we can't find the entry to update and can't create a second one.
+                raise ChangeSkipped(
+                    "Kitsu has this title on your list but hides it from other apps (adult titles are hidden "
+                    "while your Kitsu SFW filter is on)"
+                ) from exc
+            if "progress" in reason and "exceed" in reason:
+                # Kitsu counts fewer episodes for this title than the master list does: cap at Kitsu's count.
+                count = await self._episode_count(entry.media_id)
+                if count is not None and count < entry.progress:
+                    await self._send(entry_id, entry.media_id, attributes | {"progress": count})
+                    return
+            raise
+
+    async def _send(self, entry_id: str | None, media_id: str, attributes: dict[str, Any]) -> None:
         if entry_id:
             body = {"data": {"type": "libraryEntries", "id": entry_id, "attributes": attributes}}
             await self._jsonapi("PATCH", f"{API}/library-entries/{entry_id}", json=body)
-        else:
-            body = {
-                "data": {
-                    "type": "libraryEntries",
-                    "attributes": attributes,
-                    "relationships": {
-                        "user": {"data": {"type": "users", "id": self.remote_user_id}},
-                        "anime": {"data": {"type": "anime", "id": entry.media_id}},
-                    },
-                }
+            return
+        body = {
+            "data": {
+                "type": "libraryEntries",
+                "attributes": attributes,
+                "relationships": {
+                    "user": {"data": {"type": "users", "id": self.remote_user_id}},
+                    "anime": {"data": {"type": "anime", "id": media_id}},
+                },
             }
-            await self._jsonapi("POST", f"{API}/library-entries", json=body)
+        }
+        await self._jsonapi("POST", f"{API}/library-entries", json=body)
+
+    async def _episode_count(self, media_id: str) -> int | None:
+        try:
+            data = await self._jsonapi("GET", f"{API}/anime/{media_id}", params={"fields[anime]": "episodeCount"})
+        except httpx.HTTPStatusError:
+            return None
+        count = data.get("data", {}).get("attributes", {}).get("episodeCount")
+        return int(count) if count else None
 
     async def delete_entry(self, media_id: str, remote_entry_id: str | None = None) -> None:
         entry_id = remote_entry_id or await self._find_entry_id(media_id)

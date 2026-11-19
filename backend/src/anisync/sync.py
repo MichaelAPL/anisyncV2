@@ -21,7 +21,7 @@ from anisync.logs import redact
 from anisync.mapping import IdMapper
 from anisync.models import LinkedAccount, SyncRun, SyncRunEvent, User
 from anisync.providers import get_provider
-from anisync.providers.base import ListEntry, ProviderClient, RateLimited, ReauthRequired
+from anisync.providers.base import ChangeSkipped, ListEntry, ProviderClient, RateLimited, ReauthRequired
 
 log = logging.getLogger(__name__)
 
@@ -143,12 +143,14 @@ async def apply_plan(
     plan: Plan,
     events: list[Event] | None = None,
     run: SyncRun | None = None,
+    skipped: list[str] | None = None,
 ) -> list[str]:
     """Write the plan to the provider, then record what succeeded in the mirror's snapshot.
 
     Results are saved every `BATCH` changes, so a long sync shows progress (`run.planned`/`run.processed`) and an
     interrupted one keeps what it did. A change that fails is left out of the snapshot, so the next sync plans it
-    again. Failures are also appended to `events` (structured, for the admin sync log) when it is given."""
+    again. Failures are also appended to `events` (structured, for the admin sync log) when it is given. Changes the
+    provider hides from us (`ChangeSkipped`) are not failures: their reasons are collected in `skipped`."""
     step = get_provider(mirror.provider).score_step
     errors: list[str] = []
     written: list[ListEntry] = []
@@ -174,6 +176,11 @@ async def apply_plan(
         except ReauthRequired:
             await save()
             raise
+        except ChangeSkipped as exc:
+            if skipped is not None:
+                skipped.append(str(exc))
+            if events is not None:
+                events.append(Event("info", "skipped", f"{change.op} {change.media_id}: {exc}"[:500], change.media_id))
         except Exception as exc:  # keep going; one bad entry shouldn't block the rest
             log.warning("sync change failed: %s %s: %s", change.op, change.media_id, exc)
             message = f"{change.op} {change.media_id}: {redact(str(exc))[:300]}"  # shown to users and admins
@@ -310,7 +317,11 @@ async def _sync_mirrors(
                 ]
             else:
                 await unmatched.record(session, user.id, master.provider, mirror.provider, plan.unmapped)
-                result["errors"] = await apply_plan(session, mirror, client, plan, events, run)
+                skipped: list[str] = []
+                result["errors"] = await apply_plan(session, mirror, client, plan, events, run, skipped)
+                if skipped:
+                    result["skipped"] = len(skipped)
+                    result["skipped_reason"] = skipped[0]
                 mirror.last_synced_at = datetime.now(UTC)
         except ReauthRequired as exc:
             result = {"error": str(exc), "reauth_required": True}

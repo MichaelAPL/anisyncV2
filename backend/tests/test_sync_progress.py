@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from anisync import jobs, snapshots, sync
-from anisync.models import SyncRun
+from anisync.models import SyncRun, SyncRunEvent
 from tests.fakes import FakeClient
 from tests.test_sync import make_user
 from tests.test_sync_snapshots import title
@@ -194,3 +194,21 @@ async def test_the_dashboard_stops_treating_an_interrupted_run_as_running(sessio
     await sync.close_interrupted_runs(session)
     assert await sync.running_run(session, user.id) is None
     assert isinstance(row.id, int)
+
+
+# ---- changes the provider hides are skipped, not failed ---------------------------------------------------------
+
+
+@usesfakes
+async def test_hidden_titles_are_reported_as_skipped_with_the_reason_and_are_not_errors(session):
+    user = await make_user(session)
+    master_has(4)
+    FakeClient.SKIP_ON = {"b2", "b3"}
+    result = (await sync.run_sync(session, user.id, "manual"))[str(user.mirrors[0].id)]
+    assert result["skipped"] == 2 and result["skipped_reason"] == "hidden by the provider"
+    assert not result["errors"]
+    assert await mirror_snapshot(session, user) == {"b1", "b4"}  # skipped ones aren't recorded: tried again next time
+    run = (await session.scalars(select(SyncRun).where(SyncRun.user_id == user.id))).one()
+    assert run.status == "ok" and run.processed == 4
+    events = [e for e in (await session.scalars(select(SyncRunEvent).where(SyncRunEvent.run_id == run.id))).all()]
+    assert sorted(e.kind for e in events) == ["skipped", "skipped"] and {e.level for e in events} == {"info"}

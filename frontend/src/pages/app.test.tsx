@@ -56,6 +56,15 @@ describe('dashboard', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('A sync is already running.')
   })
 
+  it('explains titles a provider hides instead of calling them failures', async () => {
+    const runs = [{ id: 1, trigger: 'manual', status: 'ok', started_at: new Date().toISOString(), finished_at: new Date().toISOString(), planned: 3, processed: 3, summary: { mal: { provider: 'mal', username: 'u', create: 3, update: 0, delete: 0, unmapped: 0, unmapped_titles: [], errors: [], skipped: 2, skipped_reason: 'Kitsu hides adult titles while your SFW filter is on' } } }]
+    stubApi({ 'GET /api/sync/runs': runs })
+    renderRoute('/dashboard')
+    expect(await screen.findByText(/2 titles were skipped: Kitsu hides adult titles/)).toBeInTheDocument()
+    expect(screen.getByText('In sync')).toBeInTheDocument()
+    expect(screen.queryByText(/failed/)).toBeNull()
+  })
+
   it('shows how far a running sync has got', async () => {
     const running = [{ id: 1, trigger: 'manual', status: 'running', started_at: new Date(Date.now() - 60_000).toISOString(), finished_at: null, summary: {}, planned: 300, processed: 40 }]
     stubApi({ 'GET /api/sync/runs': running })

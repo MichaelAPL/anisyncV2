@@ -114,6 +114,11 @@ def error_detail(resp: httpx.Response) -> str | None:
     return " ".join(text.split())[:200] or None
 
 
+class ChangeSkipped(Exception):
+    """A change that can't be made, and that isn't a failure of ours: the provider hides the entry from us. Reported as
+    a skipped title with the reason, not as an error."""
+
+
 class RateLimited(Exception):
     def __init__(self, provider_id: str, retry_after: float | None):
         super().__init__(f"{provider_id} rate limited (retry after {retry_after}s)")

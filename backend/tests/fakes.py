@@ -7,6 +7,7 @@ from typing import ClassVar
 
 from anisync.providers.base import (
     AuthKind,
+    ChangeSkipped,
     ListEntry,
     Provider,
     ProviderClient,
@@ -75,6 +76,7 @@ class FakeClient(ProviderClient):
     FAIL_ON: ClassVar[set[str]] = set()  # media ids whose save raises
     REJECT_TOKENS: ClassVar[bool] = False  # simulate a revoked token
     RATE_LIMITED: ClassVar[dict[str, int]] = {}  # media id -> how many saves are refused with 'retry after 30s'
+    SKIP_ON: ClassVar[set[str]] = set()  # media ids the provider hides from us (saves are skipped, not failed)
     REAUTH_ON: ClassVar[str | None] = None  # media id whose save says the token was revoked
     FETCH_ERROR: ClassVar[Exception | None] = None  # raised by every list read (an outage, a timeout)
     REQUESTS: ClassVar[list[tuple[str, str]]] = []  # (provider id, "full" | "since" | "save" | "delete")
@@ -112,6 +114,8 @@ class FakeClient(ProviderClient):
     async def save_entry(self, entry: ListEntry) -> None:
         if entry.media_id in FakeClient.FAIL_ON:
             raise RuntimeError(f"cannot save {entry.media_id}")
+        if entry.media_id in FakeClient.SKIP_ON:
+            raise ChangeSkipped("hidden by the provider")
         if entry.media_id == FakeClient.REAUTH_ON:
             raise ReauthRequired("revoked")
         if FakeClient.RATE_LIMITED.get(entry.media_id, 0) > 0:
@@ -154,6 +158,7 @@ def reset_fakes() -> None:
     FakeClient.FETCH_ERROR = None
     FakeClient.RATE_LIMITED = {}
     FakeClient.REAUTH_ON = None
+    FakeClient.SKIP_ON = set()
     FakeClient.REQUESTS = []
 
 

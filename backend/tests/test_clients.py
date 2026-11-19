@@ -137,14 +137,14 @@ async def test_every_provider_request_names_the_client_instead_of_the_library_de
 
 @respx.mock
 async def test_a_refused_request_says_why_in_the_providers_own_words():
-    body = {"errors": [{"title": "Invalid", "detail": "anime has already been taken", "status": "422"}]}
+    body = {"errors": [{"title": "Invalid", "detail": "startedAt - must not be in the future", "status": "422"}]}
     respx.post(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(422, json=body))
     client = kitsu.KitsuClient("tok", remote_user_id="1")
     respx.get(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(200, json={"data": []}))
     with pytest.raises(httpx.HTTPStatusError) as caught:
         await client.save_entry(ListEntry(media_id="47470", status=Status.WATCHING, progress=1))
     message = str(caught.value)
-    assert "422" in message and "anime has already been taken" in message
+    assert "422" in message and "startedAt - must not be in the future" in message
     assert "\n" not in message  # one line: it is stored in the sync log and shown to users
     assert caught.value.response.status_code == 422  # still a normal status error for callers that check it
 
@@ -155,3 +155,43 @@ async def test_a_refusal_without_a_readable_body_keeps_the_plain_error():
     with pytest.raises(httpx.HTTPStatusError) as caught:
         await mal.MalClient("tok").fetch_list()
     assert "500" in str(caught.value) and "oops" not in str(caught.value)
+
+
+def _kitsu_entry(progress: int = 13) -> ListEntry:
+    return ListEntry(media_id="47470", status=Status.COMPLETED, progress=progress)
+
+
+@respx.mock
+async def test_kitsu_adult_titles_it_hides_are_skipped_not_failed():
+    from anisync.providers.base import ChangeSkipped
+
+    respx.get(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(200, json={"data": []}))
+    taken = {"errors": [{"title": "Invalid", "detail": "animeId - has already been taken", "status": "422"}]}
+    respx.post(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(422, json=taken))
+    with pytest.raises(ChangeSkipped, match="SFW filter"):
+        await kitsu.KitsuClient("tok", remote_user_id="1").save_entry(_kitsu_entry())
+
+
+@respx.mock
+async def test_kitsu_caps_progress_at_its_own_episode_count():
+    respx.get(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(200, json={"data": []}))
+    refused = {"errors": [{"title": "Invalid", "detail": "progress - cannot exceed length of media", "status": "422"}]}
+    post = respx.post(f"{kitsu.API}/library-entries").mock(
+        side_effect=[httpx.Response(422, json=refused), httpx.Response(201, json={})]
+    )
+    respx.get(f"{kitsu.API}/anime/47470").mock(
+        return_value=httpx.Response(200, json={"data": {"attributes": {"episodeCount": 1}}})
+    )
+    await kitsu.KitsuClient("tok", remote_user_id="1").save_entry(_kitsu_entry(progress=13))
+    sent = [json.loads(c.request.content)["data"]["attributes"]["progress"] for c in post.calls]
+    assert sent == [13, 1]  # tried as is, then with Kitsu's count
+
+
+@respx.mock
+async def test_kitsu_progress_errors_stay_errors_when_the_episode_count_is_unknown():
+    respx.get(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(200, json={"data": []}))
+    refused = {"errors": [{"title": "Invalid", "detail": "progress - cannot exceed length of media", "status": "422"}]}
+    respx.post(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(422, json=refused))
+    respx.get(f"{kitsu.API}/anime/47470").mock(return_value=httpx.Response(404, json={"errors": []}))
+    with pytest.raises(httpx.HTTPStatusError, match="cannot exceed"):
+        await kitsu.KitsuClient("tok", remote_user_id="1").save_entry(_kitsu_entry())
