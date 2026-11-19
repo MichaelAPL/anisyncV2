@@ -40,6 +40,22 @@ describe('dashboard', () => {
     await waitFor(() => expect(calls.filter((c) => c.method === 'POST' && c.path === '/api/sync')).toHaveLength(1))
   })
 
+  it('disables Sync now while a sync is running, even one this tab did not start', async () => {
+    const running = [{ id: 1, trigger: 'scheduled', status: 'running', started_at: new Date(Date.now() - 60_000).toISOString(), finished_at: null, summary: {} }]
+    stubApi({ 'GET /api/sync/runs': running })
+    renderRoute('/dashboard')
+    const button = await screen.findByRole('button', { name: /syncing/i })
+    expect(button).toBeDisabled()
+    expect(screen.getByText('Running')).toBeInTheDocument()
+  })
+
+  it('does not let a run that never finished block the button forever', async () => {
+    const stale = [{ id: 1, trigger: 'scheduled', status: 'running', started_at: new Date(Date.now() - 20 * 60_000).toISOString(), finished_at: null, summary: {} }]
+    stubApi({ 'GET /api/sync/runs': stale })
+    renderRoute('/dashboard')
+    expect(await screen.findByRole('button', { name: /sync now/i })).toBeEnabled()
+  })
+
   it('marks a mirror whose last run failed', async () => {
     const runs = [{ id: 1, trigger: 'scheduled', status: 'ok', started_at: new Date().toISOString(), finished_at: new Date().toISOString(), summary: { mal: { provider: 'mal', username: 'u', create: 0, update: 0, delete: 0, unmapped: 4, unmapped_titles: [], errors: ['x', 'y'] } } }]
     stubApi({ 'GET /api/sync/runs': runs })

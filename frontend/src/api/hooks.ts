@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { isRunning } from '../format'
 import { api, ApiError } from './client'
 import type { EntryInput, ListEntry, Me, MirrorResult, ProviderInfo, SessionInfo, Site, SyncRun } from './types'
 
@@ -65,11 +66,12 @@ export function useStartSync() {
   })
 }
 
+/** Recent runs. Refreshes every few seconds while one is running (or while `poll` is set). */
 export const useRuns = (poll = false) =>
   useQuery({
     queryKey: ['runs'],
     queryFn: () => api<SyncRun[]>('/api/sync/runs'),
-    refetchInterval: poll ? 3000 : false,
+    refetchInterval: (q) => (poll || q.state.data?.some(isRunning) ? 3000 : false),
   })
 
 export const useList = () => useQuery({ queryKey: ['list'], queryFn: () => api<ListEntry[]>('/api/list'), staleTime: 60_000 })

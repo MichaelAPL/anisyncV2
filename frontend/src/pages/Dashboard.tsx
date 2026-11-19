@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useOutletContext } from 'react-router'
 import { useProviders, useRuns, useStartSync } from '../api/hooks'
 import type { Account, Me, MirrorResult, SyncRun } from '../api/types'
-import { clock, relative, utcHour } from '../format'
+import { clock, isRunning, relative, utcHour } from '../format'
 import { Icon } from '../ui/Icon'
 import { ProviderChip } from '../ui/Provider'
 import { Loading } from '../ui/Loading'
@@ -29,13 +29,14 @@ export function Dashboard() {
   const [clicked, setClicked] = useState<number | null>(null)
   const [expired, setExpired] = useState(false)
   const runs = useRuns(clicked !== null && !expired)
-    const start = useStartSync()
+  const start = useStartSync()
   const name = (id: string) => providers.data?.find((p) => p.id === id)?.name ?? id
 
   const latest = runs.data?.[0]
-  // Syncing until a run that started after the click has finished, or for at most a minute.
-  const finished = clicked !== null && !!latest?.finished_at && new Date(latest.started_at).getTime() >= clicked
-  const syncing = clicked !== null && !expired && !finished
+  const runningNow = (runs.data ?? []).some(isRunning)
+  // After a click there can be a short gap before the run row exists: stay busy until a run since the click has finished.
+  const finishedSinceClick = clicked !== null && !!latest?.finished_at && new Date(latest.started_at).getTime() >= clicked
+  const syncing = runningNow || (clicked !== null && !expired && !finishedSinceClick)
   useEffect(() => {
     if (clicked === null) return
     const t = setTimeout(() => setExpired(true), 60_000)
