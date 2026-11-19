@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 
-from anisync import jobs, ratelimit, sessions, snapshots, sync
+from anisync import jobs, ratelimit, sessions, snapshots, switches, sync
 from anisync.api.deps import CurrentUser, Session
 from anisync.api.schemas import (
     ListEntryOut,
@@ -236,6 +236,8 @@ async def revoke_session(session_id: int, user: CurrentUser, session: Session) -
 async def _master_client(user: User, session: Session):
     if user.master is None:
         raise HTTPException(400, "Pick a master list first")
+    if user.master.provider in await switches.paused_providers(session):
+        raise HTTPException(503, f"{get_provider(user.master.provider).name} is paused for now, try again later")
     try:
         return await sync.client_for(user.master, session)
     except ReauthRequired as exc:
@@ -245,8 +247,10 @@ async def _master_client(user: User, session: Session):
 @router.get("/list")
 async def get_list(user: CurrentUser, session: Session) -> list[ListEntryOut]:
     """The master list, from our snapshot: no provider request unless it has never been read."""
-    client = await _master_client(user, session)
-    if user.master.last_full_read_at is None:
+    if user.master is None:
+        raise HTTPException(400, "Pick a master list first")
+    if user.master.last_full_read_at is None:  # only the first read needs the provider (and may be refused if paused)
+        client = await _master_client(user, session)
         await sync.refresh_snapshot(session, user.master, client, is_master=True, full=True)
     entries = await snapshots.load(session, user.master.id)
     return [ListEntryOut.model_validate(e) for e in sorted(entries, key=lambda e: e.title.lower())]

@@ -14,7 +14,7 @@ from typing import Literal
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from anisync import snapshots
+from anisync import snapshots, switches
 from anisync.engine import Plan, plan_sync
 from anisync.logs import redact
 from anisync.mapping import IdMapper
@@ -159,6 +159,9 @@ async def run_sync(
         return {"skipped": "no master list selected"}
     if user.is_banned:
         return {"skipped": "banned"}
+    paused = await switches.paused_providers(session)
+    if user.master.provider in paused:
+        return {"skipped": f"{get_provider(user.master.provider).name} is paused"}
     run = None
     if not dry_run:
         run = SyncRun(user_id=user.id, trigger=trigger, summary={})
@@ -172,6 +175,14 @@ async def run_sync(
     log.info("sync user %s: master read %s (%s received)", user.id, master_read.mode, len(master_read.received))
     for mirror in user.mirrors:
         events: list[Event] = []
+        if mirror.provider in paused:  # not an error: the mirror is left alone and catches up once it is resumed
+            summary[str(mirror.id)] = {
+                "provider": mirror.provider,
+                "username": mirror.remote_username,
+                "paused": True,
+                "reason": paused[mirror.provider],
+            }
+            continue
         try:
             client = await client_for(mirror, session)
             read = await refresh_snapshot(session, mirror, client, is_master=False, full=full)
@@ -236,6 +247,9 @@ async def push_entry(
         return
     owner = await session.get(User, account.user_id)
     if owner is None or owner.is_banned:
+        return
+    if account.provider in await switches.paused_providers(session):
+        log.info("%s is paused; not pushing %s (the next sync catches up)", account.provider, master_media_id)
         return
     async with IdMapper(session) as mapper:
         if entry is not None:

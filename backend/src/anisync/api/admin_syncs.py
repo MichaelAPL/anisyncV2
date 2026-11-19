@@ -6,11 +6,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from procrastinate.exceptions import AlreadyEnqueued
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from anisync import jobs, permissions, sync
+from anisync import jobs, moderation, permissions, sync
 from anisync.api.deps import Session, require_any_permission, require_permission
+from anisync.api.schemas import OkOut, QueuedOut
 from anisync.models import LinkedAccount, SyncRun, SyncRunEvent, User
 
 log = logging.getLogger(__name__)
@@ -275,3 +277,87 @@ async def list_events(
     if before_id is not None:
         query = query.where(SyncRunEvent.id < before_id)
     return [_event_out(*row) for row in (await session.execute(query)).all()]
+
+
+# ---- job controls --------------------------------------------------------------------------------------------
+
+JobStatus = Literal["todo", "doing", "failed"]
+
+
+class JobOut(BaseModel):
+    id: int
+    queue: str
+    task: str
+    status: str
+    attempts: int
+    scheduled_at: datetime | None
+    user_id: int | None  # for sync jobs
+    account_id: int | None  # for edit pushes
+    trigger: str | None
+
+
+def _job_out(job) -> JobOut:
+    kwargs = job.task_kwargs or {}  # only ids are shown: a push job's arguments carry list data
+    return JobOut(
+        id=job.id,
+        queue=job.queue,
+        task=job.task_name.rsplit(".", 1)[-1],
+        status=str(job.status),
+        attempts=job.attempts,
+        scheduled_at=job.scheduled_at,
+        user_id=kwargs.get("user_id"),
+        account_id=kwargs.get("account_id"),
+        trigger=kwargs.get("trigger"),
+    )
+
+
+@router.get("/jobs")
+async def list_jobs(
+    admin: Reader,
+    status: JobStatus = "failed",
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[JobOut]:
+    """Queued, running or failed background jobs, newest first."""
+    found = sorted(await jobs.app.job_manager.list_jobs_async(status=status), key=lambda j: j.id, reverse=True)
+    return [_job_out(job) for job in found[:limit]]
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_job(
+    job_id: int,
+    session: Session,
+    admin: Annotated[User, Depends(require_permission(permissions.SYNCS_CONTROL))],
+    abort: bool = False,
+) -> OkOut:
+    """Cancel a queued job. A running one is only stopped with `abort=true` (it stops at its next checkpoint)."""
+    found = list(await jobs.app.job_manager.list_jobs_async(id=job_id))
+    if not found:
+        raise HTTPException(404, "Job not found")
+    if not await jobs.app.job_manager.cancel_job_by_id_async(job_id, abort=abort):
+        raise HTTPException(409, "That job can't be cancelled in its current state")
+    await moderation.record(session, admin, "job.cancel", job_id=job_id, task=found[0].task_name, abort=abort)
+    await session.commit()
+    return OkOut()
+
+
+@router.post("/jobs/{job_id}/retry")
+async def retry_job(
+    job_id: int,
+    session: Session,
+    admin: Annotated[User, Depends(require_permission(permissions.SYNCS_RETRY))],
+) -> QueuedOut:
+    """Queue a copy of a failed or cancelled job. False if an identical job is already waiting."""
+    found = list(await jobs.app.job_manager.list_jobs_async(id=job_id))
+    if not found:
+        raise HTTPException(404, "Job not found")
+    job = found[0]
+    if str(job.status) not in ("failed", "cancelled", "aborted"):
+        raise HTTPException(409, "Only failed or cancelled jobs can be retried")
+    try:
+        await jobs.app.configure_task(job.task_name, queueing_lock=job.queueing_lock).defer_async(**job.task_kwargs)
+        queued = True
+    except AlreadyEnqueued:
+        queued = False
+    await moderation.record(session, admin, "job.retry", job_id=job_id, task=job.task_name, queued=queued)
+    await session.commit()
+    return QueuedOut(queued=queued)

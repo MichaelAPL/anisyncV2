@@ -67,6 +67,8 @@ Current progress and next steps: **`docs/ROADMAP.md`** (read it first, keep it u
 - `sync.py`: orchestration (token refresh via the provider's `refresh` hook, run plans, `push_entry`). `jobs.py`: Procrastinate tasks.
 - `permissions.py` (roles → permissions), `moderation.py` (ban/unban/role changes + `admin_actions` audit), `api/admin.py`
   (`/api/admin/*`, split into `admin.py`, `admin_syncs.py`, `admin_users.py`; every route uses `Depends(require_permission(...))`, a test enforces it). Banned users count as signed out.
+- `switches.py`: admin switches read at runtime (paused providers, paused scheduled syncs, maintenance mode, banner). Jobs and
+  syncs check them; `api/public.py` serves `/api/providers` and `/api/site` and the maintenance guard (503 on writes).
 - `stats.py` (admin overview/daily numbers), `metrics.py` (in-memory provider request counters, flushed to `provider_stats`).
 - `sessions.py` (server-side browser sessions, token hash only), `security.py` (CSRF + request-ID middleware),
   `ratelimit.py` (Postgres-backed), `logs.py` (secret redaction), `crypto.py` (`TOKEN_ENCRYPTION_KEYS`, rotation),

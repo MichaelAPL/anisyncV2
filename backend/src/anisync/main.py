@@ -3,11 +3,11 @@ import contextlib
 import logging
 from collections.abc import AsyncIterator
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from anisync import jobs, logs, metrics, moderation
-from anisync.api import admin, admin_syncs, admin_users, auth, routes
+from anisync.api import admin, admin_site, admin_syncs, admin_users, auth, public, routes
 from anisync.config import get_settings
 from anisync.db import SessionLocal
 from anisync.security import CsrfMiddleware, RequestIdMiddleware
@@ -41,7 +41,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 # No interactive API docs in production.
 docs = {} if not settings.is_production else {"docs_url": None, "redoc_url": None, "openapi_url": None}
-app = FastAPI(title="AniSync", lifespan=lifespan, **docs)
+app = FastAPI(title="AniSync", lifespan=lifespan, dependencies=[Depends(public.maintenance_guard)], **docs)
 
 
 @app.exception_handler(Exception)
@@ -64,3 +64,5 @@ app.include_router(routes.router)
 app.include_router(admin.router)
 app.include_router(admin_syncs.router)
 app.include_router(admin_users.router)
+app.include_router(admin_site.router)
+app.include_router(public.router)

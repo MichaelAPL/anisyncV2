@@ -295,3 +295,32 @@ class ProviderStat(Base):
     rate_limited: Mapped[int] = mapped_column(default=0)  # answered with HTTP 429
     errors: Mapped[int] = mapped_column(default=0)  # HTTP 4xx/5xx other than 429, or no answer at all
     total_ms: Mapped[int] = mapped_column(default=0)  # sum of response times, for the average
+
+
+class SiteSettings(Base):
+    """Switches an admin can flip while the site runs. One row (id 1), created on first use."""
+
+    __tablename__ = "site_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    scheduled_syncs_paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    maintenance: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    maintenance_message: Mapped[str | None] = mapped_column(String(500))
+    banner_text: Mapped[str | None] = mapped_column(String(500))  # plain text; the UI must never render it as HTML
+    banner_level: Mapped[str] = mapped_column(String(10), default="info", server_default="info")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(UTC)
+    )
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class ProviderSetting(Base):
+    """Per-provider kill switch: a paused provider is skipped by syncs and edit pushes, and users are told."""
+
+    __tablename__ = "provider_settings"
+
+    provider: Mapped[str] = mapped_column(String(32), primary_key=True)
+    paused: Mapped[bool] = mapped_column(Boolean, default=False)
+    paused_reason: Mapped[str | None] = mapped_column(String(500))
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    changed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

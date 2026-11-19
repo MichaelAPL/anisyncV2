@@ -17,6 +17,8 @@ PUBLIC = {
     ("GET", "/auth/{provider_id}/login"),
     ("GET", "/auth/{provider_id}/callback"),
     ("POST", "/auth/logout"),
+    ("GET", "/api/providers"),
+    ("GET", "/api/site"),
 }
 
 

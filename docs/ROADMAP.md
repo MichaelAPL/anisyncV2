@@ -21,7 +21,7 @@ Update this file at the end of every working session. Work the phases in order; 
 - **Phase 2 done** (security hardening, see below). Migration `a7d3c9e15f02`.
 - **Phase 3 done** (sync efficiency, see below). Migration `c5e2b8f94a13`. 268 backend tests.
 - **Profile (display name + picture) done 2026-11-19** (migration `f2c6e9a41b78`, 332 backend tests): `PATCH /api/me`, `PUT|DELETE /api/me/avatar`, see Phase 5 for the screens.
-- **Phase 4 in progress:** 4.0-4.5 done (roles, bans, sync events, stats, sync status, user lookup; migrations `d6f3a9b7c201`, `e8b4c1d92a65`, `a9e1d4c7b630`; 370 backend tests).
+- **Phase 4 in progress:** 4.0-4.7 and 4.9 done (roles, bans, sync events, stats, sync status, user lookup, provider kill switch, job controls, banner and maintenance; migrations `d6f3a9b7c201`, `e8b4c1d92a65`, `a9e1d4c7b630`, `b4f7a2c9d815`; 392 backend tests).
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
 
@@ -255,15 +255,15 @@ Stack notes (checked 2026-11-17, no stack change needed):
 - [x] **4.5 User lookup page.** *(done: `GET /api/admin/users?q=&banned=&limit=&offset=` (id, name or provider username; wildcards are escaped), `GET /api/admin/users/{id}` (accounts with token state and list size, sessions, recent runs, admin action history; no tokens), `POST /api/admin/users/{id}/sync` (`syncs.retry`, audited); `users.read`. Ban/unban and role are in 4.1. "View preview", force full re-check, unlink and delete are 4.10.)*  Original spec:  Search by AniSync id, display name, or provider username; show linked accounts
       (provider, username, token expiry/re-auth state, sync flags), recent runs with events, ban state and admin
       action history; buttons: ban/unban (with reason), trigger sync, view preview.
-- [ ] **4.6 Provider health + kill switch.** Per provider: error rate, latency, 429s (from 4.3 counters). A
+- [x] **4.6 Provider health + kill switch.** *(done: `provider_settings`; `GET /api/admin/providers` (accounts, requests/429s/errors/avg ms today and over 7 days from `provider_stats`; `stats.read`), `PUT /api/admin/providers/{id}` `{paused, reason}` (`providers.manage`, reason required, audited on change). A paused provider: a paused mirror is skipped by syncs (shown as `paused` in the run summary, not an error) and by edit pushes, and catches up after resume because its snapshot lacks the change; a paused master stops its user's sync, refuses list edits and refresh with 503 (the list is still served from our copy). Public `GET /api/providers` lists every provider with `paused` and the reason, for the sign-in page and UI. Per-provider rate-limit override: not built.)*  Original spec:  Per provider: error rate, latency, 429s (from 4.3 counters). A
       `provider_settings` table (`paused`, `paused_reason`, optional rate-limit override) read at runtime: paused
       providers are skipped by sync and `push_entry` (jobs deferred, not failed) and the UI says so.
-- [ ] **4.7 Job controls.** Pause/resume scheduled syncs globally (flag in DB, checked by the periodic
+- [x] **4.7 Job controls.** *(done: `PUT /api/admin/syncs/scheduled {paused}` (`syncs.control`) stops the hourly tick and skips queued sync/push jobs, which is safe because the next sync catches up from snapshots; `GET /api/admin/syncs/jobs?status=todo|doing|failed`, `POST .../jobs/{id}/cancel` (`syncs.control`, `abort=true` for running ones) and `.../retry` (`syncs.retry`, queues a copy of a failed or cancelled job). Job lists show ids only, never list data. All audited. Not verified against a real Procrastinate database: the tests use the in-memory connector.)*  Original spec:  Pause/resume scheduled syncs globally (flag in DB, checked by the periodic
       tasks); retry failed jobs, cancel stuck jobs (Procrastinate job manager).
 - [ ] **4.8 Unmatched titles queue.** Entries the resolver couldn't map (recorded during sync, with counts of how
       many users have them). Admin links IDs by hand → writes `media_external_ids` rows marked `source=manual`, which
       the dataset import (1.7) never overwrites. Affected users get it at their next sync.
-- [ ] **4.9 Site banner + maintenance mode.** Banner text/level stored in DB, shown by the frontend
+- [x] **4.9 Site banner + maintenance mode.** *(done: `site_settings`; public `GET /api/site` (banner text and level, maintenance flag and message); `GET|PUT /api/admin/site` (`site.manage`, plain text only, `<`/`>` refused, audited by changed field). Maintenance mode answers every write with 503 + `Retry-After` through an app-wide dependency, except `/api/admin/*` and sign-out, and pauses the background jobs. The UI must render banner text as text. Migration `b4f7a2c9d815`.)*  Original spec:  Banner text/level stored in DB, shown by the frontend
       (`GET /api/site`). Maintenance mode returns 503 on writes and pauses jobs.
 - [ ] **4.10 User actions** on the lookup page: force full reconcile, unlink a broken account, show sync preview,
       revoke tokens (forces re-link), **delete user and all their data** (also needed for privacy requests and

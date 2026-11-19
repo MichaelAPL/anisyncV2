@@ -12,7 +12,7 @@ import httpx
 from procrastinate import App, PsycopgConnector, RetryStrategy
 from procrastinate.exceptions import AlreadyEnqueued
 
-from anisync import metrics, ratelimit, seed, sessions, sync
+from anisync import metrics, ratelimit, seed, sessions, switches, sync
 from anisync.config import get_settings
 from anisync.db import SessionLocal
 from anisync.providers.base import ListEntry, RateLimited
@@ -35,6 +35,9 @@ async def sync_tick(timestamp: int) -> None:
     """Hourly: queue a sync for the users whose hour it is (each user once a day, spread over 24 hours)."""
     hour = datetime.fromtimestamp(timestamp, UTC).hour
     async with SessionLocal() as session:
+        if not await switches.background_work_allowed(session):
+            log.info("sync tick skipped: scheduled syncs are paused or the site is in maintenance")
+            return
         user_ids = await sync.users_in_slot(session, hour)
     for user_id in user_ids:
         await enqueue_user_sync(user_id, "scheduled")
@@ -70,12 +73,16 @@ async def seed_ids(timestamp: int) -> None:
 @app.task(queue="sync", retry=TRANSIENT)
 async def sync_user(user_id: int, trigger: str) -> dict:
     async with SessionLocal() as session:
+        if not await switches.background_work_allowed(session):
+            return {"skipped": "paused"}  # the next scheduled sync picks the user up again
         return await sync.run_sync(session, user_id, trigger)
 
 
 @app.task(queue="push", retry=TRANSIENT)
 async def push_entry(account_id: int, master_provider: str, master_media_id: str, entry: dict | None) -> None:
     async with SessionLocal() as session:
+        if not await switches.background_work_allowed(session):
+            return  # not lost: the mirror's snapshot lacks the change, so the next sync writes it
         await sync.push_entry(
             session, account_id, master_provider, master_media_id, ListEntry.from_dict(entry) if entry else None
         )
