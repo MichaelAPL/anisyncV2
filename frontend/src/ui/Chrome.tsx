@@ -1,4 +1,5 @@
 import { Link } from 'react-router'
+import { useMe, useSaveProfile } from '../api/hooks'
 import { Icon } from './Icon'
 import { setTheme, isDark, useTheme } from '../theme'
 
@@ -21,12 +22,18 @@ export function Wordmark() {
 export function ThemeButton() {
   const theme = useTheme()
   const dark = isDark(theme)
+  const me = useMe().data
+  const save = useSaveProfile()
   return (
     <button
       type="button"
       className="icon-btn"
       aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-      onClick={() => setTheme(dark ? 'light' : 'dark')}
+      onClick={() => {
+        const next = dark ? 'light' : 'dark'
+        setTheme(next)
+        if (me) save.mutate({ theme: next }) // signed in: remember it on the account too
+      }}
     >
       <Icon name={dark ? 'sun' : 'moon'} />
     </button>

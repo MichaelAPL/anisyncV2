@@ -1,5 +1,6 @@
 import unicodedata
 from datetime import date, datetime, timedelta
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -46,6 +47,7 @@ class MeOut(BaseModel):
     display_name: str
     avatar_url: str | None  # None: the UI shows the initials of the name
     avatar_provider: str | None  # which provider the picture came from
+    theme: Literal["system", "light", "dark"]
     master_account_id: int | None
     role: str
     permissions: list[str]  # what the UI may show; the server enforces it on every request
@@ -59,6 +61,7 @@ def _me(user: User) -> MeOut:
         display_name=user.display_name,
         avatar_url=user.avatar_url,
         avatar_provider=user.avatar_provider,
+        theme=user.theme,  # type: ignore[arg-type]
         master_account_id=user.master_account_id,
         role=user.role,
         permissions=sorted(user.permissions),
@@ -104,11 +107,14 @@ class MasterIn(BaseModel):
 
 
 class ProfileIn(BaseModel):
-    display_name: str = Field(min_length=1, max_length=40)
+    display_name: str | None = Field(default=None, min_length=1, max_length=40)
+    theme: Literal["system", "light", "dark"] | None = None
 
     @field_validator("display_name")
     @classmethod
-    def _plain_text(cls, value: str) -> str:
+    def _plain_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         if any(unicodedata.category(ch) == "Cc" for ch in value):  # tabs, newlines and other control characters
             raise ValueError("Use letters, numbers and punctuation only")
         value = " ".join(value.split())  # trims and collapses spaces
@@ -119,7 +125,12 @@ class ProfileIn(BaseModel):
 
 @router.patch("/me", dependencies=[ratelimit.per_user("profile", limit=20, window=timedelta(hours=1))])
 async def update_profile(body: ProfileIn, user: CurrentUser, session: Session) -> MeOut:
-    user.display_name = body.display_name
+    if body.display_name is None and body.theme is None:
+        raise HTTPException(422, "Nothing to change")
+    if body.display_name is not None:
+        user.display_name = body.display_name
+    if body.theme is not None:
+        user.theme = body.theme
     await session.commit()
     return _me(user)
 

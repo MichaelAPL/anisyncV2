@@ -17,6 +17,7 @@ export interface Me {
   display_name: string
   avatar_url: string | null
   avatar_provider: string | null
+  theme: 'system' | 'light' | 'dark'
   master_account_id: number | null
   role: string
   permissions: string[]

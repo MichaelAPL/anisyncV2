@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { setTheme } from '../theme'
 import { Link, NavLink, Outlet } from 'react-router'
 import { useSite } from '../api/hooks'
 import type { IconName } from './icons'
@@ -48,6 +49,7 @@ function SiteBanner() {
 }
 
 function Frame({ me }: { me: Me }) {
+  useEffect(() => setTheme(me.theme), [me.id]) // eslint-disable-line -- the account's choice wins when the page opens
   const admin = me.permissions.length > 0
   return (
     <div className="shell">

@@ -246,3 +246,20 @@ async def test_the_picture_can_be_removed(session):
         me = (await c.delete("/api/me/avatar")).json()
     assert me["avatar_url"] is None and me["avatar_provider"] is None
     assert me["accounts"][0]["avatar_url"] == PIC_A  # the account's own picture is still known for choosing again
+
+
+# ---- theme -----------------------------------------------------------------------------------------------------
+
+
+@usesfakes
+async def test_the_theme_is_saved_per_user_and_defaults_to_system(session):
+    user, _, token = await make_user(session, "th")
+    async with browser(token) as c:
+        assert (await c.get("/api/me")).json()["theme"] == "system"
+        response = await c.patch("/api/me", json={"theme": "dark"})
+        assert response.status_code == 200 and response.json()["theme"] == "dark"
+        assert response.json()["display_name"] == user.display_name  # only the theme changed
+        assert (await c.patch("/api/me", json={"theme": "purple"})).status_code == 422
+        assert (await c.patch("/api/me", json={})).status_code == 422  # nothing to change
+    await session.refresh(user)
+    assert user.theme == "dark"

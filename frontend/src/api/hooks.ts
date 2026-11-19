@@ -100,3 +100,32 @@ export function useRefreshList() {
 }
 
 export const useSessions = () => useQuery({ queryKey: ['sessions'], queryFn: () => api<SessionInfo[]>('/api/sessions') })
+
+export const useSaveProfile = () => useMeMutation((v: { display_name?: string; theme?: Me['theme'] }) => api<Me>('/api/me', { method: 'PATCH', json: v }))
+export const useUseAvatar = () => useMeMutation((accountId: number) => api<Me>('/api/me/avatar', { method: 'PUT', json: { account_id: accountId } }))
+export const useRemoveAvatar = () => useMeMutation(() => api<Me>('/api/me/avatar', { method: 'DELETE' }))
+export const useUnlink = () => useMeMutation((id: number) => api<Me>(`/api/accounts/${id}`, { method: 'DELETE' }))
+
+export function useSignOut() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (everywhere: boolean) => api<{ ok: boolean }>(everywhere ? '/auth/logout-all' : '/auth/logout', { method: 'POST' }),
+    onSuccess: () => qc.clear(),
+  })
+}
+
+export function useRevokeSession() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api<{ ok: boolean }>(`/api/sessions/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
+  })
+}
+
+export function useDeleteAccount() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (confirm: string) => api<{ ok: boolean }>('/api/me/delete', { method: 'POST', json: { confirm } }),
+    onSuccess: () => qc.clear(),
+  })
+}

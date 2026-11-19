@@ -41,6 +41,7 @@ class User(Base):
     # It does not follow master changes. None = show initials.
     avatar_url: Mapped[str | None] = mapped_column(String(500))
     avatar_provider: Mapped[str | None] = mapped_column(String(32))
+    theme: Mapped[str] = mapped_column(String(10), default="system", server_default="system")  # system | light | dark
 
     accounts: Mapped[list["LinkedAccount"]] = relationship(
         back_populates="user", foreign_keys="LinkedAccount.user_id", cascade="all, delete-orphan", lazy="selectin"
