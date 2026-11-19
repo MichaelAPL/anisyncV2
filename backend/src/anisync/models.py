@@ -15,6 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
+from anisync import permissions
 from anisync.crypto import decrypt, encrypt
 from anisync.db import Base
 from anisync.providers.registry import get_provider
@@ -30,10 +31,29 @@ class User(Base):
         ForeignKey("linked_accounts.id", ondelete="SET NULL", use_alter=True, name="fk_users_master_account_id")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # What the user may do is decided by `permissions.ROLE_PERMISSIONS`; the column only names the role.
+    role: Mapped[str] = mapped_column(String(32), default=permissions.DEFAULT_ROLE, server_default="user")
+    banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ban_reason: Mapped[str | None] = mapped_column(String(500))
+    banned_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     accounts: Mapped[list["LinkedAccount"]] = relationship(
         back_populates="user", foreign_keys="LinkedAccount.user_id", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    @validates("role")
+    def _known_role(self, _key: str, role: str) -> str:
+        if not permissions.is_known_role(role):
+            raise ValueError(f"unknown role {role!r}")
+        return role
+
+    @property
+    def permissions(self) -> frozenset[str]:
+        return permissions.permissions_for(self.role)
+
+    @property
+    def is_banned(self) -> bool:
+        return self.banned_at is not None
 
     @property
     def master(self) -> "LinkedAccount | None":
@@ -224,3 +244,17 @@ class RateLimitHit(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     key: Mapped[str] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class AdminAction(Base):
+    """Audit trail of what admins did (bans, role changes, ...). Never edited; survives the deletion of its users."""
+
+    __tablename__ = "admin_actions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    action: Mapped[str] = mapped_column(String(64))
+    target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    note: Mapped[str | None] = mapped_column(String(500))
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

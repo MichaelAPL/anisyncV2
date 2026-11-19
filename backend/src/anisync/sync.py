@@ -134,6 +134,8 @@ async def run_sync(
     user = await session.get(User, user_id)
     if user is None or user.master is None:
         return {"skipped": "no master list selected"}
+    if user.is_banned:
+        return {"skipped": "banned"}
     run = None
     if not dry_run:
         run = SyncRun(user_id=user.id, trigger=trigger, summary={})
@@ -183,6 +185,9 @@ async def push_entry(
     account = await session.get(LinkedAccount, account_id)
     if account is None or not account.sync_enabled:
         return
+    owner = await session.get(User, account.user_id)
+    if owner is None or owner.is_banned:
+        return
     async with IdMapper(session) as mapper:
         if entry is not None:
             await mapper.learn_from([entry])
@@ -223,7 +228,9 @@ def next_sync_at(user_id: int, now: datetime | None = None) -> datetime:
 async def users_in_slot(session: AsyncSession, hour: int) -> list[int]:
     """Users with a master list whose scheduled sync is due in this hour of the day."""
     ids = await session.scalars(
-        select(User.id).where(User.master_account_id.is_not(None), User.id % SYNC_SLOTS == hour % SYNC_SLOTS)
+        select(User.id).where(
+            User.master_account_id.is_not(None), User.banned_at.is_(None), User.id % SYNC_SLOTS == hour % SYNC_SLOTS
+        )
     )
     return list(ids)
 
@@ -244,4 +251,6 @@ async def purge_runs(session: AsyncSession, keep_days: int = 30, keep_per_user: 
 
 
 async def users_with_master(session: AsyncSession) -> list[int]:
-    return list(await session.scalars(select(User.id).where(User.master_account_id.is_not(None))))
+    return list(
+        await session.scalars(select(User.id).where(User.master_account_id.is_not(None), User.banned_at.is_(None)))
+    )

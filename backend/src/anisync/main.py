@@ -6,9 +6,10 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from anisync import jobs, logs
-from anisync.api import auth, routes
+from anisync import jobs, logs, moderation
+from anisync.api import admin, auth, routes
 from anisync.config import get_settings
+from anisync.db import SessionLocal
 from anisync.security import CsrfMiddleware, RequestIdMiddleware
 
 logs.configure()
@@ -18,6 +19,10 @@ settings = get_settings()
 
 @contextlib.asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async with SessionLocal() as session:
+        promoted = await moderation.bootstrap_admins(session)
+    if promoted:
+        log.info("promoted %s user(s) to admin from ADMIN_USER_IDS", promoted)
     async with jobs.app.open_async():
         worker = None
         if settings.run_worker_in_process:
@@ -53,3 +58,4 @@ app.add_middleware(CsrfMiddleware, allowed_origin=settings.public_url)
 app.add_middleware(RequestIdMiddleware)
 app.include_router(auth.router)
 app.include_router(routes.router)
+app.include_router(admin.router)

@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     # (user id modulo 24), so every user is synced once a day and the load is spread over the day.
     sync_tick_cron: str = "0 * * * *"
 
+    # Comma-separated AniSync user ids that are made admins when they exist (startup and sign-in). Never demotes.
+    admin_user_ids: str = ""
+
+    @property
+    def admin_ids(self) -> set[int]:
+        return {int(part) for part in self.admin_user_ids.split(",") if part.strip().isdigit()}
+
     @property
     def is_production(self) -> bool:
         """Served over HTTPS = a real deployment (local development runs on http://localhost)."""

@@ -223,7 +223,7 @@ Stack notes (checked 2026-11-17, no stack change needed):
   admin UI is Django-only, so we build ours over its tables.
 - Charts: a small React chart library (e.g. Recharts); pick it in Phase 5.
 
-- [ ] **4.0 Roles and permissions.** Check *permissions*, never role names, so new roles never touch endpoints.
+- [x] **4.0 Roles and permissions.** *(done; `permissions.py`, `require_permission` / `require_any_permission` in `api/deps.py`, `moderation.set_role`, `ADMIN_USER_IDS` bootstrap on startup and at sign-in, tests in `tests/test_admin.py`)* Check *permissions*, never role names, so new roles never touch endpoints.
       - `users.role`: string validated in code (`user` | `admin` now; no Postgres enum), default `user`.
       - `permissions.py`: permission constants (`stats.read`, `syncs.read`, `syncs.control`, `syncs.retry`,
         `users.read`, `users.ban`, `users.delete`, `users.manage_tokens`, `roles.manage`, `titles.link`,
@@ -238,7 +238,7 @@ Stack notes (checked 2026-11-17, no stack change needed):
       - Bootstrap: `ADMIN_USER_IDS` promotes those users to `admin` on startup (never demotes).
       - Growth path, no endpoint changes at any step: new fixed roles = new `ROLE_PERMISSIONS` entries; several
         roles per user = `user_roles` table; roles editable in the admin UI = `roles` + `role_permissions` tables.
-- [ ] **4.1 Ban + user status model.** `users.banned_at`, `ban_reason`, `banned_by`; `admin_actions` audit table
+- [x] **4.1 Ban + user status model.** *(done: `users.banned_at/ban_reason/banned_by`, `admin_actions`, `moderation.ban/unban`, `POST /api/admin/users/{id}/ban|unban`, `PUT .../role`. Queued jobs are not deleted: `run_sync` and `push_entry` check the ban when they run. An admin can't ban themselves or anyone who can manage roles. Migration `d6f3a9b7c201`.)* `users.banned_at`, `ban_reason`, `banned_by`; `admin_actions` audit table
       (who, what, target, when, note). Banning revokes all the user's sessions (Phase 2.1), skips them in sync fan-out,
       cancels their queued jobs, and blocks sign-in and re-linking (also by provider account, so a new AniSync user
       can't be created from the same MAL/AniList/Kitsu account). Unban reverses it. Tokens stay encrypted; never shown.

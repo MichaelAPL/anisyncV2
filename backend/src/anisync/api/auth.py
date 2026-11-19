@@ -16,7 +16,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from anisync import ratelimit, sessions
+from anisync import moderation, ratelimit, sessions
 from anisync.api.deps import CurrentUser, OptionalUser, Session
 from anisync.api.schemas import OkOut
 from anisync.config import get_settings
@@ -112,6 +112,9 @@ async def callback(
         user = await _link_account(session, user, provider, tokens)
     except PermissionError:
         return _failed(response, "account_already_linked", path="/dashboard")
+    if user.is_banned:
+        return _failed(response, "account_banned")
+    await moderation.bootstrap_admins(session)
     token = await sessions.start(
         session, user.id, request.headers.get("user-agent"), replacing=request.cookies.get(sessions.COOKIE)
     )

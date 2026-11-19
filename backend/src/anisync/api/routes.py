@@ -40,6 +40,8 @@ class MeOut(BaseModel):
     id: int
     display_name: str
     master_account_id: int | None
+    role: str
+    permissions: list[str]  # what the UI may show; the server enforces it on every request
     next_sync_at: datetime | None  # when the next scheduled sync of the master list runs (None without a master)
     accounts: list[AccountOut]
 
@@ -49,6 +51,8 @@ def _me(user: User) -> MeOut:
         id=user.id,
         display_name=user.display_name,
         master_account_id=user.master_account_id,
+        role=user.role,
+        permissions=sorted(user.permissions),
         next_sync_at=sync.next_sync_at(user.id) if user.master_account_id else None,
         accounts=[
             AccountOut(

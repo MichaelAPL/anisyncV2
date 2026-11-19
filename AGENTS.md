@@ -62,6 +62,8 @@ Current progress and next steps: **`docs/ROADMAP.md`** (read it first, keep it u
   costs one request (the master's incremental read). Full reads (first sync, weekly, forced) replace the snapshot and
   are the only way to notice removals and direct edits (`drifted`). `mapping.py` also keeps a 7-day negative lookup cache.
 - `sync.py`: orchestration (token refresh via the provider's `refresh` hook, run plans, `push_entry`). `jobs.py`: Procrastinate tasks.
+- `permissions.py` (roles → permissions), `moderation.py` (ban/unban/role changes + `admin_actions` audit), `api/admin.py`
+  (`/api/admin/*`; every route uses `Depends(require_permission(...))`, a test enforces it). Banned users count as signed out.
 - `sessions.py` (server-side browser sessions, token hash only), `security.py` (CSRF + request-ID middleware),
   `ratelimit.py` (Postgres-backed), `logs.py` (secret redaction), `crypto.py` (`TOKEN_ENCRYPTION_KEYS`, rotation),
   `cli.py` (`uv run anisync generate-key | rotate-keys | seed`).
