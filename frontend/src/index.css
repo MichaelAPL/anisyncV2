@@ -11,3 +11,21 @@ body { min-height: 100vh; }
 @media (prefers-reduced-motion: reduce) { .wall-track { animation: none !important; } }
 
 main { flex: 1 0 auto; }
+
+/* Loading states: indeterminate bar, shimmering placeholders, a token travelling master -> mirror. */
+@keyframes bar-slide { from { transform: translateX(-100%) } to { transform: translateX(350%) } }
+@keyframes shimmer { 0% { opacity: .55 } 50% { opacity: 1 } 100% { opacity: .55 } }
+@keyframes hop { 0% { left: 0; opacity: 0 } 15% { opacity: 1 } 85% { opacity: 1 } 100% { left: calc(100% - 12px); opacity: 0 } }
+@keyframes pulse-ring { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 40%, transparent) } 50% { box-shadow: 0 0 0 10px transparent } }
+.bar-indeterminate { position: relative; height: 4px; border-radius: 2px; overflow: hidden; background: var(--secondary-container); }
+.bar-indeterminate::after { content: ''; position: absolute; inset: 0 auto 0 0; width: 30%; border-radius: 2px; background: var(--primary); animation: bar-slide 1.4s cubic-bezier(.4, 0, .2, 1) infinite; }
+.skeleton { background: var(--sc-high); border-radius: 12px; animation: shimmer 1.6s ease-in-out infinite; }
+.hop-track { position: relative; flex: 1; height: 12px; min-width: 60px; }
+.hop-track::before { content: ''; position: absolute; left: 0; right: 0; top: 5px; height: 2px; border-radius: 1px; background: var(--outline-variant); }
+.hop-dot { position: absolute; top: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--primary); animation: hop 1.6s ease-in-out infinite; }
+.pulse { animation: pulse-ring 1.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .bar-indeterminate::after, .skeleton, .hop-dot, .pulse { animation: none !important; }
+  .bar-indeterminate::after { width: 100%; opacity: .5; }
+  .hop-dot { left: calc(50% - 6px); }
+}

@@ -5,6 +5,7 @@ import { useProviders, useStartSync, useSyncPreview } from '../api/hooks'
 import type { Change, Me, MirrorResult } from '../api/types'
 import { Icon } from '../ui/Icon'
 import { finishSetup } from '../setup'
+import { PreviewLoading } from '../ui/Loading'
 import { OnboardingLayout, RequireUser } from '../ui/Onboarding'
 import { ProviderChip } from '../ui/Provider'
 
@@ -104,14 +105,16 @@ function Body({ me }: { me: Me }) {
           Copying from <strong style={{ color: 'var(--on-surface)' }}>{master ? name(master.provider) : 'your master'}</strong>. Nothing is written until you apply.
         </p>
       </div>
-      {preview.isPending && <p className="body-l muted" role="status">Reading your lists… this can take a minute for long lists.</p>}
-      {loadError && (
+      {preview.isFetching && (
+        <PreviewLoading master={master?.provider} mirrors={me.accounts.filter((a) => !a.is_master && a.sync_enabled).map((a) => a.provider)} />
+      )}
+      {!preview.isFetching && loadError && (
         <div className="banner banner-warn" role="alert" style={{ borderRadius: 16, padding: '16px 20px' }}>
           <span className="body-m">{loadError}</span>
           <button type="button" className="btn btn-text" onClick={() => preview.refetch()}>Try again</button>
         </div>
       )}
-      {results.length > 1 && (
+      {!preview.isFetching && results.length > 1 && (
         <div className="tabs" role="tablist" aria-label="Mirror">
           {results.map((r) => (
             <button key={r.provider} type="button" role="tab" className="tab" aria-selected={r.provider === current?.provider} onClick={() => setTab(r.provider)}>
@@ -120,12 +123,12 @@ function Body({ me }: { me: Me }) {
           ))}
         </div>
       )}
-      {failed.map((r) => (
+      {!preview.isFetching && failed.map((r) => (
         <p key={r.provider} className="body-m" role="alert" style={{ color: 'var(--error)' }}>
           {name(r.provider)}: {r.reauth_required ? 'the connection expired. Reconnect it on the link page.' : r.error}
         </p>
       ))}
-      {current && !current.error && (
+      {!preview.isFetching && current && !current.error && (
         <Mirror result={current} prune={!!me.accounts.find((a) => a.provider === current.provider)?.prune_missing} name={name(current.provider)} />
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
@@ -133,7 +136,7 @@ function Body({ me }: { me: Me }) {
         <button
           type="button"
           className="btn btn-filled"
-          disabled={!preview.data || failed.length > 0 || start.isPending}
+          disabled={!preview.data || preview.isFetching || failed.length > 0 || start.isPending}
           onClick={() => start.mutate(undefined, { onSuccess: () => { finishSetup(); navigate('/dashboard') } })}
         >
           {start.isPending ? 'Starting…' : `Apply to ${results.map((r) => name(r.provider)).join(' and ') || 'mirrors'}`}
