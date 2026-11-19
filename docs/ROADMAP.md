@@ -20,6 +20,7 @@ Update this file at the end of every working session. Work the phases in order; 
 - **Phase 1 done** (tasks 1.0–1.7). Migrations `3f1a7c2b9d40`, `8c4d1e6a2b57`.
 - **Phase 2 done** (security hardening, see below). Migration `a7d3c9e15f02`.
 - **Phase 3 done** (sync efficiency, see below). Migration `c5e2b8f94a13`. 268 backend tests.
+- **Phase 4 in progress:** 4.0 roles, 4.1 bans and 4.2 sync events done (migrations `d6f3a9b7c201`, `e8b4c1d92a65`, 297 backend tests).
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
 
@@ -242,7 +243,7 @@ Stack notes (checked 2026-11-17, no stack change needed):
       (who, what, target, when, note). Banning revokes all the user's sessions (Phase 2.1), skips them in sync fan-out,
       cancels their queued jobs, and blocks sign-in and re-linking (also by provider account, so a new AniSync user
       can't be created from the same MAL/AniList/Kitsu account). Unban reverses it. Tokens stay encrypted; never shown.
-- [ ] **4.2 Sync logs.** `sync_runs` `trigger` values become `scheduled` | `manual` | `edit` (a run's `read`/`drifted` fields already say whether it did a full reconcile), and a
+- [x] **4.2 Sync logs.** *(done: `sync_run_events` with `level`, `kind` = change_failed | rate_limited | reauth | unmapped | drifted, at most 50 per mirror per run with `events_dropped` in the summary, deleted with their run; migration `e8b4c1d92a65`. The admin screens that read them are 4.4/4.5.)* `sync_runs` `trigger` values become `scheduled` | `manual` | `edit` (a run's `read`/`drifted` fields already say whether it did a full reconcile), and a
       `sync_run_events` table (run_id, account_id, level, message, media ref, created_at) for per-entry failures,
       re-auth errors and rate-limit hits. Retention ties into 3.5 (keep ~30 days).
 - [ ] **4.3 Stats endpoints.** Users (total, new per day/week, active in last 7/30 days, banned); linked accounts per

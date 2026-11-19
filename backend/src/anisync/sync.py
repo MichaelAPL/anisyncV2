@@ -18,13 +18,14 @@ from anisync import snapshots
 from anisync.engine import Plan, plan_sync
 from anisync.logs import redact
 from anisync.mapping import IdMapper
-from anisync.models import LinkedAccount, SyncRun, User
+from anisync.models import LinkedAccount, SyncRun, SyncRunEvent, User
 from anisync.providers import get_provider
-from anisync.providers.base import ListEntry, ProviderClient, ReauthRequired
+from anisync.providers.base import ListEntry, ProviderClient, RateLimited, ReauthRequired
 
 log = logging.getLogger(__name__)
 
 FULL_READ_EVERY = timedelta(days=7)
+MAX_EVENTS_PER_MIRROR = 50  # a run that fails everywhere keeps its log readable and small; the summary has the count
 SYNC_SLOTS = 24  # users are spread over the day: a user is synced in the hour that equals their id modulo this
 
 
@@ -102,10 +103,21 @@ async def plan_for_mirror(
     )
 
 
-async def apply_plan(session: AsyncSession, mirror: LinkedAccount, client: ProviderClient, plan: Plan) -> list[str]:
+@dataclass
+class Event:
+    level: str
+    kind: str
+    message: str
+    media_ref: str | None = None
+
+
+async def apply_plan(
+    session: AsyncSession, mirror: LinkedAccount, client: ProviderClient, plan: Plan, events: list[Event] | None = None
+) -> list[str]:
     """Write the plan to the provider, then record what succeeded in the mirror's snapshot.
 
-    A change that fails is left out of the snapshot, so the next sync plans it again."""
+    A change that fails is left out of the snapshot, so the next sync plans it again. Failures are also appended to
+    `events` (structured, for the admin sync log) when it is given."""
     errors, written, deleted = [], [], []
     for change in plan.changes:
         try:
@@ -119,7 +131,18 @@ async def apply_plan(session: AsyncSession, mirror: LinkedAccount, client: Provi
             raise
         except Exception as exc:  # keep going; one bad entry shouldn't block the rest
             log.warning("sync change failed: %s %s: %s", change.op, change.media_id, exc)
-            errors.append(f"{change.op} {change.media_id}: {redact(str(exc))[:300]}")  # shown to users and admins
+            message = f"{change.op} {change.media_id}: {redact(str(exc))[:300]}"  # shown to users and admins
+            errors.append(message)
+            if events is not None:
+                rate_limited = isinstance(exc, RateLimited)
+                events.append(
+                    Event(
+                        "warning" if rate_limited else "error",
+                        "rate_limited" if rate_limited else "change_failed",
+                        message,
+                        change.media_id,
+                    )
+                )
     step = get_provider(mirror.provider).score_step
     await snapshots.upsert(session, mirror.id, written, step)
     await snapshots.remove(session, mirror.id, deleted)
@@ -148,6 +171,7 @@ async def run_sync(
     master_entries = await snapshots.load(session, master.id)
     log.info("sync user %s: master read %s (%s received)", user.id, master_read.mode, len(master_read.received))
     for mirror in user.mirrors:
+        events: list[Event] = []
         try:
             client = await client_for(mirror, session)
             read = await refresh_snapshot(session, mirror, client, is_master=False, full=full)
@@ -158,16 +182,40 @@ async def run_sync(
             result: dict = plan.counts() | {"unmapped_titles": [e.title for e in plan.unmapped][:50], "read": read.mode}
             if read.mode == "full":
                 result["drifted"] = read.drifted
+                if read.drifted:
+                    events.append(
+                        Event("info", "drifted", f"{read.drifted} entries were edited directly on {mirror.provider}")
+                    )
+            if plan.unmapped:
+                events.append(
+                    Event("info", "unmapped", f"{len(plan.unmapped)} titles have no {mirror.provider} equivalent")
+                )
             if dry_run:
                 result["changes"] = [
                     {"op": c.op, "media_id": c.media_id, "fields": c.fields, "title": (c.desired or c.current).title}
                     for c in plan.changes
                 ]
             else:
-                result["errors"] = await apply_plan(session, mirror, client, plan)
+                result["errors"] = await apply_plan(session, mirror, client, plan, events)
                 mirror.last_synced_at = datetime.now(UTC)
         except ReauthRequired as exc:
             result = {"error": str(exc), "reauth_required": True}
+            events.append(Event("error", "reauth", redact(str(exc))[:500]))
+        if run is not None:
+            session.add_all(
+                SyncRunEvent(
+                    run_id=run.id,
+                    account_id=mirror.id,
+                    provider=mirror.provider,
+                    level=e.level,
+                    kind=e.kind,
+                    message=e.message,
+                    media_ref=e.media_ref,
+                )
+                for e in events[:MAX_EVENTS_PER_MIRROR]
+            )
+            if len(events) > MAX_EVENTS_PER_MIRROR:
+                result["events_dropped"] = len(events) - MAX_EVENTS_PER_MIRROR
         summary[str(mirror.id)] = {"provider": mirror.provider, "username": mirror.remote_username} | result
 
     if run is not None:

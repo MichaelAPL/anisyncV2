@@ -212,12 +212,30 @@ class SyncRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    trigger: Mapped[str] = mapped_column(String(20))  # "daily" | "manual"
+    trigger: Mapped[str] = mapped_column(String(20))  # scheduled | manual | edit
     status: Mapped[str] = mapped_column(String(20), default="running")  # running | ok | error
     # {"<account_id>": {"created": n, "updated": n, "deleted": n, "unmapped": [...], "errors": [...]}}
     summary: Mapped[dict] = mapped_column(JSON, default=dict)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SyncRunEvent(Base):
+    """A notable thing that happened in a sync run: a failed change, a re-auth request, a rate limit, unmapped titles.
+    Never one row per synced entry, so the table stays small. Deleted with its run (retention follows `purge_runs`)."""
+
+    __tablename__ = "sync_run_events"
+    __table_args__ = (Index("ix_sync_run_events_kind_created", "kind", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("sync_runs.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("linked_accounts.id", ondelete="SET NULL"))
+    provider: Mapped[str | None] = mapped_column(String(32))
+    level: Mapped[str] = mapped_column(String(10))  # info | warning | error
+    kind: Mapped[str] = mapped_column(String(24))  # change_failed | rate_limited | reauth | unmapped | drifted
+    message: Mapped[str] = mapped_column(String(500))
+    media_ref: Mapped[str | None] = mapped_column(String(64))  # the title id on the provider it concerns
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class UserSession(Base):
