@@ -310,12 +310,13 @@ Design if we do it (nothing built now blocks it; a user with no linked accounts 
 **5.1 done 2026-11-19 (foundation):** the canvas stylesheet is the app stylesheet (`src/styles/anisync-m3.css`, `html.as.theme-*`),
 theme switch with a pre-React script (localStorage only for now; saving it per user needs a `users.theme` column and
 `PATCH /api/me`, not built yet), API client + `useMe`/`useProviders`/`useSite`, router, Vite proxy for `/api` and `/auth`,
-landing page. Build and lint are clean. **Not built yet:** Link lists, Choose master, Review first sync, Dashboard, My list,
+landing page. Build and lint are clean. **5.2 done 2026-11-19 (setup flow):** Link lists (`/link`, OAuth buttons and the Kitsu password form), Choose master (`/master`, master radio, per-mirror switches), Review first sync (`/review`, dry run with per-mirror tabs, filters, unmatched list, Apply). Checked in Chrome against the real backend with a seeded user: master change and switches persist, the preview error path shows the server's message, and Apply posts once and goes to the dashboard; the preview itself was a mocked response because the dev accounts have no real tokens. **Not verified:** real OAuth round trips, a real preview. **Not built yet:** Dashboard, My list,
 Settings, profile screens, admin screens, Privacy page, maintenance page, banner, tests (Vitest + a Playwright smoke test).
 
 
-- [x] **Landing poster wall, built 2026-11-19** (`ui/PosterWall.tsx`, posters in `src/data/posters.json`, refreshed with `node scripts/update-posters.mjs`; 48 popular titles, hotlinked from AniList's CDN; design: canvas "1 · Sign in", 2026-11-19).** Inspired by Sagaline's landing page; the
-      mascot is deferred until a graphic designer delivers one. Full-bleed wall of 8-9 columns of posters drifting
+- [x] **Landing hero: drifting poster wall, built 2026-11-19** (`ui/PosterWall.tsx`, posters in `src/data/posters.json`,
+      refreshed with `node scripts/update-posters.mjs`; 48 popular titles hotlinked from AniList's CDN; design: canvas
+      "1 · Sign in"). The mascot is deferred until a graphic designer delivers one. Full-bleed wall of 15 columns of posters drifting
       vertically (pure CSS `translateY` keyframes, alternating direction, 150-300 s per loop, posters listed twice for a
       seamless loop), under a surface-coloured scrim (works in light and dark) with one M3 card (headline, provider
       chips, sign-in buttons). A few posters carry provider monograms as a sync hint. `prefers-reduced-motion` stops the

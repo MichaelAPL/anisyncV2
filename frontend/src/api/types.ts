@@ -42,3 +42,23 @@ export interface Site {
   banner_level: string
   updated_at: string
 }
+
+export interface Change {
+  op: 'create' | 'update' | 'delete'
+  media_id: string
+  fields: string[]
+  title: string
+}
+
+export interface MirrorResult {
+  provider: string
+  username: string
+  create: number
+  update: number
+  delete: number
+  unmapped: number
+  unmapped_titles: string[]
+  changes?: Change[]
+  error?: string
+  reauth_required?: boolean
+}

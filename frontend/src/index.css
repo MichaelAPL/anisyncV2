@@ -9,3 +9,5 @@ body { min-height: 100vh; }
 @keyframes wall-down { from { transform: translateY(-50%) } to { transform: translateY(0) } }
 .wall-track { display: flex; flex-direction: column; gap: 14px; will-change: transform; }
 @media (prefers-reduced-motion: reduce) { .wall-track { animation: none !important; } }
+
+main { flex: 1 0 auto; }
