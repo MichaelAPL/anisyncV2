@@ -1,5 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router'
+import { AdminShell } from './admin/AdminShell'
+import { Overview } from './admin/Overview'
+import { Syncs } from './admin/Syncs'
+import { UserDetail, Users } from './admin/Users'
+import { Providers, SitePage, Titles } from './admin/Site'
 import { Dashboard } from './pages/Dashboard'
 import { AppShell } from './ui/Shell'
 import { useMe, useSite } from './api/hooks'
@@ -36,6 +41,15 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/list" element={<ListEditor />} />
             <Route path="/settings" element={<Settings />} />
+          </Route>
+          <Route path="/admin" element={<AdminShell />}>
+            <Route index element={<Overview />} />
+            <Route path="syncs" element={<Syncs />} />
+            <Route path="users" element={<Users />} />
+            <Route path="users/:id" element={<UserDetail />} />
+            <Route path="titles" element={<Titles />} />
+            <Route path="providers" element={<Providers />} />
+            <Route path="site" element={<SitePage />} />
           </Route>
           <Route path="/privacy" element={<Privacy />} />
           <Route path="*" element={<NotFound />} />

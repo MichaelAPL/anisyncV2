@@ -310,7 +310,16 @@ Design if we do it (nothing built now blocks it; a user with no linked accounts 
 **5.1 done 2026-11-19 (foundation):** the canvas stylesheet is the app stylesheet (`src/styles/anisync-m3.css`, `html.as.theme-*`),
 theme switch with a pre-React script (localStorage only for now; saving it per user needs a `users.theme` column and
 `PATCH /api/me`, not built yet), API client + `useMe`/`useProviders`/`useSite`, router, Vite proxy for `/api` and `/auth`,
-landing page. Build and lint are clean. **5.2 done 2026-11-19 (setup flow):** Link lists (`/link`, OAuth buttons and the Kitsu password form), Choose master (`/master`, master radio, per-mirror switches), Review first sync (`/review`, dry run with per-mirror tabs, filters, unmatched list, Apply). Checked in Chrome against the real backend with a seeded user: master change and switches persist, the preview error path shows the server's message, and Apply posts once and goes to the dashboard; the preview itself was a mocked response because the dev accounts have no real tokens. **Not verified:** real OAuth round trips, a real preview. **Not built yet:** Dashboard, My list,
+landing page. Build and lint are clean. **5.2 done 2026-11-19 (setup flow):** Link lists (`/link`, OAuth buttons and the Kitsu password form), Choose master (`/master`, master radio, per-mirror switches), Review first sync (`/review`, dry run with per-mirror tabs, filters, unmatched list, Apply). Checked in Chrome against the real backend with a seeded user: master change and switches persist, the preview error path shows the server's message, and Apply posts once and goes to the dashboard; the preview itself was a mocked response because the dev accounts have no real tokens. **Not verified:** real OAuth round trips, a real preview. **5.3-5.7 done 2026-11-19 (every screen):** app shell (side rail, bottom bar on phones, site banner), Dashboard, My list with the entry editor
+(side panel, bottom sheet on phones, undo, "check master" refresh), Settings (profile name and picture, accounts, sync switches,
+theme saved per user with new `users.theme` + `PATCH /api/me {theme}`, sessions, delete account), Privacy, maintenance gate,
+404, and the admin area (Overview, Syncs and logs, Users and user detail, Unmatched titles, Providers and dataset, Banner and
+maintenance) under `/admin`. Checked in Chrome against the real backend with a seeded admin user: the shell, dashboard, settings
+and all admin pages load and the admin pages show live data. **Not verified:** phone layouts and the bottom sheet (the browser
+window couldn't be resized), light mode, anything needing real provider tokens (list load, sync, previews), the admin write
+actions (ban, role, pause, import) in the UI, real OAuth. **Not built:** "Add anime" (needs a title search endpoint that doesn't
+exist), donation card (no platform chosen), Vitest and Playwright tests, a chart on the admin overview (a table for now).
+Known gaps: `/api/list` answers 500 when the provider itself fails (fix while testing with real accounts).
 Settings, profile screens, admin screens, Privacy page, maintenance page, banner, tests (Vitest + a Playwright smoke test).
 
 
