@@ -3,14 +3,14 @@
 Raises `ModerationError` with the HTTP status to answer with; the routes only translate it.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from anisync import permissions, sessions
 from anisync.config import get_settings
-from anisync.models import AdminAction, User
+from anisync.models import AdminAction, LinkedAccount, User
 
 
 class ModerationError(Exception):
@@ -70,7 +70,7 @@ async def unban(session: AsyncSession, actor: User, user_id: int, note: str | No
     return target
 
 
-async def _role_managers(session: AsyncSession) -> int:
+async def role_managers(session: AsyncSession) -> int:
     roles = [r for r, perms in permissions.ROLE_PERMISSIONS.items() if permissions.ROLES_MANAGE in perms]
     return (
         await session.scalar(
@@ -90,7 +90,7 @@ async def set_role(session: AsyncSession, actor: User, user_id: int, role: str) 
         permissions.ROLES_MANAGE in target.permissions
         and permissions.ROLES_MANAGE not in permissions.permissions_for(role)
     )
-    if loses_it and await _role_managers(session) <= 1:
+    if loses_it and await role_managers(session) <= 1:
         raise ModerationError(409, "The last user who can manage roles can't lose that permission")
     if target.is_banned and permissions.permissions_for(role):
         raise ModerationError(409, "Unban this user before giving them a role")
@@ -122,3 +122,24 @@ async def bootstrap_admins(session: AsyncSession) -> int:
     if promoted:
         await session.commit()
     return promoted
+
+
+def revoke_tokens(account: LinkedAccount) -> None:
+    """Throw away the stored tokens so the next use asks the user to link the account again."""
+    account.access_token = "revoked"  # noqa: S105 (a placeholder, not a credential)
+    account.refresh_token = None
+    account.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+
+
+async def unlink(session: AsyncSession, user: User, account: LinkedAccount) -> None:
+    """Remove a linked account (tokens and our copy of its list). A master that goes is replaced by another account."""
+    if user.is_banned:
+        # Unlinking would free the provider account to sign up again as a new, unbanned user.
+        raise ModerationError(409, "Unban this user first: their accounts stay linked while they are banned")
+    if user.master_account_id == account.id:
+        others = sorted((a for a in user.accounts if a.id != account.id), key=lambda a: a.id)
+        user.master_account_id = others[0].id if others else None
+        await session.flush()
+    await session.delete(account)
+    await session.commit()
+    await session.refresh(user, ["accounts"])

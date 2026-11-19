@@ -21,7 +21,7 @@ Update this file at the end of every working session. Work the phases in order; 
 - **Phase 2 done** (security hardening, see below). Migration `a7d3c9e15f02`.
 - **Phase 3 done** (sync efficiency, see below). Migration `c5e2b8f94a13`. 268 backend tests.
 - **Profile (display name + picture) done 2026-11-19** (migration `f2c6e9a41b78`, 332 backend tests): `PATCH /api/me`, `PUT|DELETE /api/me/avatar`, see Phase 5 for the screens.
-- **Phase 4 in progress:** 4.0-4.7 and 4.9 done (roles, bans, sync events, stats, sync status, user lookup, provider kill switch, job controls, banner and maintenance; migrations `d6f3a9b7c201`, `e8b4c1d92a65`, `a9e1d4c7b630`, `b4f7a2c9d815`; 392 backend tests).
+- **Phase 4 in progress:** 4.0-4.7, 4.9-4.11 done (roles, bans, sync events, stats, sync status, user lookup, provider kill switch, job controls, banner and maintenance, user actions, expiring connections; migrations `d6f3a9b7c201`, `e8b4c1d92a65`, `a9e1d4c7b630`, `b4f7a2c9d815`; 419 backend tests). Left: 4.8 unmatched titles, 4.12 dataset status.
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
 
@@ -265,10 +265,10 @@ Stack notes (checked 2026-11-17, no stack change needed):
       the dataset import (1.7) never overwrites. Affected users get it at their next sync.
 - [x] **4.9 Site banner + maintenance mode.** *(done: `site_settings`; public `GET /api/site` (banner text and level, maintenance flag and message); `GET|PUT /api/admin/site` (`site.manage`, plain text only, `<`/`>` refused, audited by changed field). Maintenance mode answers every write with 503 + `Retry-After` through an app-wide dependency, except `/api/admin/*` and sign-out, and pauses the background jobs. The UI must render banner text as text. Migration `b4f7a2c9d815`.)*  Original spec:  Banner text/level stored in DB, shown by the frontend
       (`GET /api/site`). Maintenance mode returns 503 on writes and pauses jobs.
-- [ ] **4.10 User actions** on the lookup page: force full reconcile, unlink a broken account, show sync preview,
+- [x] **4.10 User actions** *(done: `POST /api/admin/users/{id}/full-check` and `/preview` (`syncs.retry`); `POST .../accounts/{aid}/revoke-tokens` and `DELETE .../accounts/{aid}` (`users.manage_tokens`; a banned user's accounts can't be unlinked, or they could sign up again as a new user); `DELETE /api/admin/users/{id}?confirm={id}` (`users.delete`; refused for yourself, banned users and role managers) and self-service `POST /api/me/delete {confirm: "delete my account"}` through `deletion.py`. Deleting removes accounts, tokens, list copies, sessions, runs and events through the database cascades; admin audit rows stay without the user link and carry the deleted user's id and name in `details`. Provider-side tokens are not revoked (no provider API for it). Known gap: a banned user can't be erased without unbanning first, because we keep no separate ban list.)*  Original spec:  on the lookup page: force full reconcile, unlink a broken account, show sync preview,
       revoke tokens (forces re-link), **delete user and all their data** (also needed for privacy requests and
       MAL §3(c); reuse for self-service account deletion).
-- [ ] **4.11 Expiring AniList tokens.** List accounts whose token expires within 30 days, and show users an
+- [x] **4.11 Expiring AniList tokens.** *(done: `GET /api/admin/accounts/expiring?days=30` (`users.read`, soonest first, `expired` vs `expiring`, only connections we can't renew themselves); `/api/me` accounts now carry `needs_relink` and `expires_soon` for the on-site banner.)*  Original spec:  List accounts whose token expires within 30 days, and show users an
       on-site banner before it does (we have no emails: MAL/AniList sign-in doesn't give us one).
 - [ ] **4.12 Dataset import status.** Last run of the 1.7 import, rows added/changed, coverage per provider, errors;
       button to re-run.

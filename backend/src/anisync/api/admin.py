@@ -2,15 +2,16 @@
 refuses users without any permission."""
 
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from anisync import moderation, permissions, stats
 from anisync.api.deps import Session, require_any_permission, require_permission
-from anisync.models import User
+from anisync.models import LinkedAccount, User
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_any_permission)])
 
@@ -137,3 +138,53 @@ async def stats_daily(
         days=[DayOut.model_validate(asdict(d)) for d in series],
         provider_requests=[ProviderRequestsOut.model_validate(asdict(r)) for r in requests],
     )
+
+
+# ---- connections that end ----------------------------------------------------------------------------------
+
+
+class ExpiringAccountOut(BaseModel):
+    account_id: int
+    user_id: int
+    display_name: str
+    provider: str
+    remote_username: str
+    is_master: bool
+    expires_at: datetime
+    state: str  # "expired" (the user has to link it again now) | "expiring"
+
+
+@router.get("/accounts/expiring")
+async def expiring_accounts(
+    session: Session,
+    admin: Annotated[User, Depends(require_permission(permissions.USERS_READ))],
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> list[ExpiringAccountOut]:
+    """Connections that can't be renewed and end within `days`, soonest first."""
+    now = datetime.now(UTC)
+    found = await session.execute(
+        select(LinkedAccount, User)
+        .join(User, User.id == LinkedAccount.user_id)
+        .where(
+            LinkedAccount.expires_at.is_not(None),
+            LinkedAccount.expires_at < now + timedelta(days=days),
+            User.banned_at.is_(None),
+        )
+        .order_by(LinkedAccount.expires_at)
+    )
+    out = [
+        ExpiringAccountOut(
+            account_id=a.id,
+            user_id=u.id,
+            display_name=u.display_name,
+            provider=a.provider,
+            remote_username=a.remote_username,
+            is_master=u.master_account_id == a.id,
+            expires_at=a.expires_at,
+            state="expired" if a.expires_at < now else "expiring",
+        )
+        for a, u in found
+        if a.cannot_renew
+    ]
+    return out[:limit]

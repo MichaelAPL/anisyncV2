@@ -2,11 +2,11 @@ import unicodedata
 from datetime import date, datetime, timedelta
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 
-from anisync import jobs, ratelimit, sessions, snapshots, switches, sync
+from anisync import deletion, jobs, moderation, permissions, ratelimit, sessions, snapshots, switches, sync
 from anisync.api.deps import CurrentUser, Session
 from anisync.api.schemas import (
     ListEntryOut,
@@ -36,6 +36,8 @@ class AccountOut(BaseModel):
     prune_missing: bool
     last_synced_at: datetime | None
     expires_at: datetime | None
+    needs_relink: bool  # the connection expired and can't be renewed: the user must link it again
+    expires_soon: bool  # it can't be renewed and expires within 30 days (the UI warns before it does)
     avatar_url: str | None  # this account's picture as last seen, for the "use this picture" choice
 
 
@@ -71,6 +73,8 @@ def _me(user: User) -> MeOut:
                 prune_missing=a.prune_missing,
                 last_synced_at=a.last_synced_at,
                 expires_at=a.expires_at,
+                needs_relink=a.needs_relink(),
+                expires_soon=a.expires_soon(),
                 avatar_url=a.avatar_url,
             )
             for a in sorted(user.accounts, key=lambda a: a.id)
@@ -153,6 +157,25 @@ async def remove_avatar(user: CurrentUser, session: Session) -> MeOut:
     user.avatar_url = user.avatar_provider = None
     await session.commit()
     return _me(user)
+
+
+class DeleteAccountIn(BaseModel):
+    confirm: str
+
+
+@router.post(
+    "/me/delete",
+    dependencies=[ratelimit.per_user("delete-account", limit=3, window=timedelta(hours=1))],
+)
+async def delete_account(body: DeleteAccountIn, response: Response, user: CurrentUser, session: Session) -> OkOut:
+    """Delete your AniSync account and everything we hold about you. Your lists on the providers are not touched."""
+    if body.confirm.strip().lower() != "delete my account":
+        raise HTTPException(422, 'Type "delete my account" to confirm')
+    if permissions.ROLES_MANAGE in user.permissions and await moderation.role_managers(session) <= 1:
+        raise HTTPException(409, "You are the last admin who can manage roles; hand that over first")
+    await deletion.delete_user(session, user)
+    sessions.clear_cookie(response)
+    return OkOut()
 
 
 @router.put("/me/master")

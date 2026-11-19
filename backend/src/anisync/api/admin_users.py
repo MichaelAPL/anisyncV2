@@ -8,11 +8,12 @@ from pydantic import BaseModel
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import aliased
 
-from anisync import jobs, moderation, permissions
+from anisync import deletion, jobs, moderation, permissions, sync
 from anisync.api.admin_syncs import RunOut, _run_out, _run_query
 from anisync.api.deps import Session, require_any_permission, require_permission
-from anisync.api.schemas import QueuedOut
+from anisync.api.schemas import MirrorResultOut, OkOut, QueuedOut
 from anisync.models import AdminAction, LinkedAccount, ListSnapshot, SyncRun, User, UserSession
+from anisync.providers.base import ReauthRequired
 
 router = APIRouter(prefix="/api/admin/users", tags=["admin"], dependencies=[Depends(require_any_permission)])
 Reader = Annotated[User, Depends(require_permission(permissions.USERS_READ))]
@@ -198,7 +199,7 @@ async def get_user(user_id: int, session: Session, admin: Reader) -> UserDetailO
                 sync_enabled=a.sync_enabled,
                 prune_missing=a.prune_missing,
                 expires_at=a.expires_at,
-                needs_relink=bool(a.expires_at and a.expires_at < now and a.refresh_token is None),
+                needs_relink=a.needs_relink(now),
                 last_synced_at=a.last_synced_at,
                 last_full_read_at=a.last_full_read_at,
                 entries=entries.get(a.id, 0),
@@ -239,3 +240,114 @@ async def sync_user_now(
     await moderation.record(session, admin, "user.sync", user, queued=queued)
     await session.commit()
     return QueuedOut(queued=queued)
+
+
+async def _active_user(session, user_id: int) -> User:
+    user = await session.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "User not found")
+    return user
+
+
+@router.post("/{user_id}/full-check")
+async def full_check(
+    user_id: int,
+    session: Session,
+    admin: Annotated[User, Depends(require_permission(permissions.SYNCS_RETRY))],
+) -> QueuedOut:
+    """Queue a sync that also re-reads every account in full (notices removals and edits made on the providers)."""
+    user = await _active_user(session, user_id)
+    if user.is_banned or user.master is None:
+        raise HTTPException(409, "This user is banned or has no master list yet")
+    queued = await jobs.enqueue_user_sync(user.id, "manual", full=True)
+    await moderation.record(session, admin, "user.full_check", user, queued=queued)
+    await session.commit()
+    return QueuedOut(queued=queued)
+
+
+@router.post("/{user_id}/preview", response_model_exclude_none=True)
+async def preview_sync(
+    user_id: int,
+    session: Session,
+    admin: Annotated[User, Depends(require_permission(permissions.SYNCS_RETRY))],
+) -> dict[str, MirrorResultOut]:
+    """What the user's next sync would change on each mirror. Reads from the providers; writes nothing."""
+    user = await _active_user(session, user_id)
+    if user.master is None:
+        raise HTTPException(409, "This user has no master list yet")
+    try:
+        return await sync.run_sync(session, user.id, "preview", dry_run=True)
+    except ReauthRequired as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+def _account(user: User, account_id: int):
+    account = next((a for a in user.accounts if a.id == account_id), None)
+    if account is None:
+        raise HTTPException(404, "Account not found")
+    return account
+
+
+@router.post("/{user_id}/accounts/{account_id}/revoke-tokens")
+async def revoke_account_tokens(
+    user_id: int,
+    account_id: int,
+    session: Session,
+    admin: Annotated[User, Depends(require_permission(permissions.USERS_MANAGE_TOKENS))],
+) -> OkOut:
+    """Forget the stored tokens of one account: the user has to link it again (the fix for a login loop)."""
+    user = await _active_user(session, user_id)
+    account = _account(user, account_id)
+    moderation.revoke_tokens(account)
+    await moderation.record(
+        session, admin, "account.revoke_tokens", user, provider=account.provider, account_id=account.id
+    )
+    await session.commit()
+    return OkOut()
+
+
+@router.delete("/{user_id}/accounts/{account_id}")
+async def unlink_account(
+    user_id: int,
+    account_id: int,
+    session: Session,
+    admin: Annotated[User, Depends(require_permission(permissions.USERS_MANAGE_TOKENS))],
+) -> OkOut:
+    """Remove a broken linked account: its tokens and our copy of its list go; the provider's list is untouched."""
+    user = await _active_user(session, user_id)
+    account = _account(user, account_id)
+    provider, was_master = account.provider, user.master_account_id == account.id
+    account_id = account.id
+    try:
+        await moderation.unlink(session, user, account)
+    except moderation.ModerationError as exc:
+        raise HTTPException(exc.status, exc.message) from None
+    await moderation.record(
+        session, admin, "account.unlink", user, provider=provider, account_id=account_id, was_master=was_master
+    )
+    await session.commit()
+    return OkOut()
+
+
+@router.delete("/{user_id}")
+async def delete_user(
+    user_id: int,
+    confirm: Annotated[int, Query(description="Must equal the user id")],
+    session: Session,
+    admin: Annotated[User, Depends(require_permission(permissions.USERS_DELETE))],
+) -> OkOut:
+    """Delete the user and all their data. Irreversible, so the id has to be repeated as `confirm`."""
+    if confirm != user_id:
+        raise HTTPException(422, "confirm must repeat the user id")
+    user = await _active_user(session, user_id)
+    if user.id == admin.id:
+        raise HTTPException(400, "Delete your own account from your settings")
+    if user.is_banned:
+        raise HTTPException(409, "Banned users are kept (otherwise they could sign up again); unban first")
+    if permissions.ROLES_MANAGE in user.permissions:
+        raise HTTPException(409, "Change this user's role before deleting them")
+    await moderation.record(
+        session, admin, "user.delete", None, user_id=user.id, display_name=user.display_name, role=user.role
+    )
+    await deletion.delete_user(session, user)
+    return OkOut()

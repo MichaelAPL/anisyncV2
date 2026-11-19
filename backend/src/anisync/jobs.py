@@ -71,11 +71,11 @@ async def seed_ids(timestamp: int) -> None:
 
 
 @app.task(queue="sync", retry=TRANSIENT)
-async def sync_user(user_id: int, trigger: str) -> dict:
+async def sync_user(user_id: int, trigger: str, full: bool = False) -> dict:
     async with SessionLocal() as session:
         if not await switches.background_work_allowed(session):
             return {"skipped": "paused"}  # the next scheduled sync picks the user up again
-        return await sync.run_sync(session, user_id, trigger)
+        return await sync.run_sync(session, user_id, trigger, full=full)
 
 
 @app.task(queue="push", retry=TRANSIENT)
@@ -88,10 +88,11 @@ async def push_entry(account_id: int, master_provider: str, master_media_id: str
         )
 
 
-async def enqueue_user_sync(user_id: int, trigger: str) -> bool:
-    """Queue a full sync unless one is already waiting for this user."""
+async def enqueue_user_sync(user_id: int, trigger: str, full: bool = False) -> bool:
+    """Queue a sync unless one is already waiting for this user. `full` also re-reads every account in full."""
+    kwargs = {"user_id": user_id, "trigger": trigger} | ({"full": True} if full else {})
     try:
-        await sync_user.configure(queueing_lock=f"sync-user-{user_id}").defer_async(user_id=user_id, trigger=trigger)
+        await sync_user.configure(queueing_lock=f"sync-user-{user_id}").defer_async(**kwargs)
         return True
     except AlreadyEnqueued:
         return False

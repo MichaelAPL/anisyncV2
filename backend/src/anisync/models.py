@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import (
     JSON,
@@ -68,6 +68,9 @@ class User(Base):
         return [a for a in self.accounts if a.id != self.master_account_id and a.sync_enabled]
 
 
+EXPIRY_WARNING = timedelta(days=30)
+
+
 class LinkedAccount(Base):
     """A user's account on one list provider, with its (encrypted) OAuth tokens."""
 
@@ -118,6 +121,18 @@ class LinkedAccount(Base):
     @refresh_token.setter
     def refresh_token(self, value: str | None) -> None:
         self._refresh_token = encrypt(value)
+
+    @property
+    def cannot_renew(self) -> bool:
+        """True when an expired connection can't be refreshed by us (no refresh token, or the provider has none)."""
+        return self.refresh_token is None or get_provider(self.provider).refresh is None
+
+    def needs_relink(self, now: datetime | None = None) -> bool:
+        return bool(self.expires_at and self.expires_at < (now or datetime.now(UTC)) and self.cannot_renew)
+
+    def expires_soon(self, now: datetime | None = None) -> bool:
+        now = now or datetime.now(UTC)
+        return bool(self.expires_at and now <= self.expires_at < now + EXPIRY_WARNING and self.cannot_renew)
 
 
 class Media(Base):
