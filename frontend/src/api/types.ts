@@ -1,0 +1,44 @@
+export interface Account {
+  id: number
+  provider: string
+  remote_username: string
+  is_master: boolean
+  sync_enabled: boolean
+  prune_missing: boolean
+  last_synced_at: string | null
+  expires_at: string | null
+  needs_relink: boolean
+  expires_soon: boolean
+  avatar_url: string | null
+}
+
+export interface Me {
+  id: number
+  display_name: string
+  avatar_url: string | null
+  avatar_provider: string | null
+  master_account_id: number | null
+  role: string
+  permissions: string[]
+  next_sync_at: string | null
+  accounts: Account[]
+}
+
+export interface ProviderInfo {
+  id: string
+  name: string
+  monogram: string
+  colors: Record<string, string>
+  auth_kind: string
+  can_sign_in: boolean
+  paused: boolean
+  paused_reason: string | null
+}
+
+export interface Site {
+  maintenance: boolean
+  maintenance_message: string | null
+  banner_text: string | null
+  banner_level: string
+  updated_at: string
+}

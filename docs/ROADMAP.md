@@ -305,9 +305,16 @@ Design if we do it (nothing built now blocks it; a user with no linked accounts 
       registrations older than 7 days; admin lookup shows email and verified status; frontend onboarding state for
       "no linked accounts yet".
 
-## Phase 5: Frontend  ← next
+## Phase 5: Frontend  ← in progress
 
-- [ ] **Landing poster wall (design: canvas "1 · Sign in", 2026-11-19).** Inspired by Sagaline's landing page; the
+**5.1 done 2026-11-19 (foundation):** the canvas stylesheet is the app stylesheet (`src/styles/anisync-m3.css`, `html.as.theme-*`),
+theme switch with a pre-React script (localStorage only for now; saving it per user needs a `users.theme` column and
+`PATCH /api/me`, not built yet), API client + `useMe`/`useProviders`/`useSite`, router, Vite proxy for `/api` and `/auth`,
+landing page. Build and lint are clean. **Not built yet:** Link lists, Choose master, Review first sync, Dashboard, My list,
+Settings, profile screens, admin screens, Privacy page, maintenance page, banner, tests (Vitest + a Playwright smoke test).
+
+
+- [x] **Landing poster wall, built 2026-11-19** (`ui/PosterWall.tsx`, posters in `src/data/posters.json`, refreshed with `node scripts/update-posters.mjs`; 48 popular titles, hotlinked from AniList's CDN; design: canvas "1 · Sign in", 2026-11-19).** Inspired by Sagaline's landing page; the
       mascot is deferred until a graphic designer delivers one. Full-bleed wall of 8-9 columns of posters drifting
       vertically (pure CSS `translateY` keyframes, alternating direction, 150-300 s per loop, posters listed twice for a
       seamless loop), under a surface-coloured scrim (works in light and dark) with one M3 card (headline, provider
@@ -335,7 +342,7 @@ Design if we do it (nothing built now blocks it; a user with no linked accounts 
 - [ ] Anime cover images: hotlink the master provider's image URL (AniList `coverImage.large` + `coverImage.color`
       as the loading tint, MAL `main_picture`, Kitsu `posterImage`); never re-host or edit them (MAL §3(a)(xii)).
       Store the URLs on `media` during sync; lazy-load; fall back to the placeholder tile.
-- [ ] `GET /api/providers` (name, monogram, colors, auth kind) so the UI has no hardcoded providers.
+- [x] `GET /api/providers` consumed by `useProviders` (names, monograms, sign-in buttons, paused state). The one place that maps provider ids to colour classes is `ui/Provider.tsx`.
 - [ ] Build the canvas screens: Sign in, Link lists, Choose master, Review first sync, Dashboard, My list.
       API client + types, routes, Vite proxy for `/api` and `/auth`.
 
