@@ -92,6 +92,28 @@ class RemoteUser:
     avatar_url: str | None = None  # the provider's profile picture, if the user has one
 
 
+def error_detail(resp: httpx.Response) -> str | None:
+    """The reason a provider gave for refusing a request, from the usual error shapes (JSON:API `errors`, GraphQL
+    `errors`, `message`, OAuth `error_description`). Short and single-line; None when the body says nothing useful."""
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+    if not isinstance(body, dict):
+        return None
+    parts: list[str] = []
+    errors = body.get("errors")
+    if isinstance(errors, list):
+        for e in errors[:3]:
+            if isinstance(e, dict):
+                parts.append(str(e.get("detail") or e.get("message") or e.get("title") or "").strip())
+    for key in ("message", "error_description", "error"):
+        if not parts and isinstance(body.get(key), str):
+            parts.append(body[key].strip())
+    text = "; ".join(p for p in parts if p)
+    return " ".join(text.split())[:200] or None
+
+
 class RateLimited(Exception):
     def __init__(self, provider_id: str, retry_after: float | None):
         super().__init__(f"{provider_id} rate limited (retry after {retry_after}s)")
@@ -251,7 +273,15 @@ class ProviderClient(abc.ABC):
             raise RateLimited(self.provider_id, float(retry_after) if retry_after else None)
         if resp.status_code == 401:
             raise ReauthRequired(f"{self.provider_id} rejected the access token")
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = error_detail(resp)
+            if detail is None:
+                raise
+            # Keep the exception type, add the provider's own explanation ("why was it refused") to the message.
+            first_line = str(exc).splitlines()[0]
+            raise httpx.HTTPStatusError(f"{first_line}: {detail}", request=exc.request, response=exc.response) from exc
         return resp
 
     @abc.abstractmethod

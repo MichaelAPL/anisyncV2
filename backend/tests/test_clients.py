@@ -133,3 +133,25 @@ async def test_every_provider_request_names_the_client_instead_of_the_library_de
     )
     await kitsu.KitsuClient("tok").whoami()
     assert api_route.calls.last.request.headers["User-Agent"] == "AniSync/0.1"
+
+
+@respx.mock
+async def test_a_refused_request_says_why_in_the_providers_own_words():
+    body = {"errors": [{"title": "Invalid", "detail": "anime has already been taken", "status": "422"}]}
+    respx.post(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(422, json=body))
+    client = kitsu.KitsuClient("tok", remote_user_id="1")
+    respx.get(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(200, json={"data": []}))
+    with pytest.raises(httpx.HTTPStatusError) as caught:
+        await client.save_entry(ListEntry(media_id="47470", status=Status.WATCHING, progress=1))
+    message = str(caught.value)
+    assert "422" in message and "anime has already been taken" in message
+    assert "\n" not in message  # one line: it is stored in the sync log and shown to users
+    assert caught.value.response.status_code == 422  # still a normal status error for callers that check it
+
+
+@respx.mock
+async def test_a_refusal_without_a_readable_body_keeps_the_plain_error():
+    respx.get(f"{mal.API}/users/@me/animelist").mock(return_value=httpx.Response(500, text="<html>oops</html>"))
+    with pytest.raises(httpx.HTTPStatusError) as caught:
+        await mal.MalClient("tok").fetch_list()
+    assert "500" in str(caught.value) and "oops" not in str(caught.value)
