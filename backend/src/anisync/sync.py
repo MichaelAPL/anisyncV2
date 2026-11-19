@@ -274,6 +274,12 @@ def next_sync_at(user_id: int, now: datetime | None = None) -> datetime:
     return candidate
 
 
+def next_batch_at(now: datetime | None = None) -> datetime:
+    """The start of the next hourly batch of scheduled syncs (UTC)."""
+    now = (now or datetime.now(UTC)).astimezone(UTC)
+    return now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+
+
 async def users_in_slot(session: AsyncSession, hour: int) -> list[int]:
     """Users with a master list whose scheduled sync is due in this hour of the day."""
     ids = await session.scalars(

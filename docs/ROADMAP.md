@@ -21,7 +21,7 @@ Update this file at the end of every working session. Work the phases in order; 
 - **Phase 2 done** (security hardening, see below). Migration `a7d3c9e15f02`.
 - **Phase 3 done** (sync efficiency, see below). Migration `c5e2b8f94a13`. 268 backend tests.
 - **Profile (display name + picture) done 2026-11-19** (migration `f2c6e9a41b78`, 332 backend tests): `PATCH /api/me`, `PUT|DELETE /api/me/avatar`, see Phase 5 for the screens.
-- **Phase 4 in progress:** 4.0 roles, 4.1 bans, 4.2 sync events and 4.3 stats done (migrations `d6f3a9b7c201`, `e8b4c1d92a65`, `a9e1d4c7b630`, 344 backend tests).
+- **Phase 4 in progress:** 4.0-4.5 done (roles, bans, sync events, stats, sync status, user lookup; migrations `d6f3a9b7c201`, `e8b4c1d92a65`, `a9e1d4c7b630`; 370 backend tests).
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
 
@@ -250,9 +250,9 @@ Stack notes (checked 2026-11-17, no stack change needed):
 - [x] **4.3 Stats endpoints.** *(done: `GET /api/admin/stats/overview` and `/stats/daily?days=` (1-60), `stats.read`. Deviation from the stack note: no `daily_stats` rollup yet; users, accounts and sync outcomes are live queries on indexed columns (sync runs are kept 30 days), and only provider request counts are stored (`provider_stats`, filled from in-memory counters in `metrics.py`, flushed every 5 minutes and at shutdown). "Active" = users with a browser session seen in the last 7/30 days. `sync_runs.changes` counts entries written per run. Migration `a9e1d4c7b630`.)*  Original spec:  Users (total, new per day/week, active in last 7/30 days, banned); linked accounts per
       provider; accounts needing re-auth; master choice per provider; per day: runs ok/failed, entries changed,
       provider requests and 429s per provider (needs request counting in `ServiceClient._request`).
-- [ ] **4.4 Sync status page.** The last scheduled runs and the weekly full reads: started/finished, users processed, failures, queue
+- [x] **4.4 Sync status page.** *(done: `GET /api/admin/syncs/status` (queues by state via Procrastinate's job manager, stalled jobs = no worker heartbeat for 5 min, the last hourly batch, next batch and its size, accounts whose full read is overdue; degrades to `queue_available: false` if the queue can't be read), `/syncs/runs` (filters status/trigger/user, `before_id` paging), `/syncs/runs/{id}` (summary + events), `/syncs/events` (level/kind/provider/user filters); `syncs.read`.)*  Original spec:  The last scheduled runs and the weekly full reads: started/finished, users processed, failures, queue
       depth and stuck jobs (Procrastinate jobs table); drill into a run's events.
-- [ ] **4.5 User lookup page.** Search by AniSync id, display name, or provider username; show linked accounts
+- [x] **4.5 User lookup page.** *(done: `GET /api/admin/users?q=&banned=&limit=&offset=` (id, name or provider username; wildcards are escaped), `GET /api/admin/users/{id}` (accounts with token state and list size, sessions, recent runs, admin action history; no tokens), `POST /api/admin/users/{id}/sync` (`syncs.retry`, audited); `users.read`. Ban/unban and role are in 4.1. "View preview", force full re-check, unlink and delete are 4.10.)*  Original spec:  Search by AniSync id, display name, or provider username; show linked accounts
       (provider, username, token expiry/re-auth state, sync flags), recent runs with events, ban state and admin
       action history; buttons: ban/unban (with reason), trigger sync, view preview.
 - [ ] **4.6 Provider health + kill switch.** Per provider: error rate, latency, 429s (from 4.3 counters). A
