@@ -27,11 +27,9 @@ function Gate({ children }: { children: React.ReactNode }) {
   return blocked ? <Maintenance /> : <>{children}</>
 }
 
-export default function App() {
+export function AppRoutes() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Gate>
+    <Gate>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/link" element={<LinkLists />} />
@@ -54,7 +52,15 @@ export default function App() {
           <Route path="/privacy" element={<Privacy />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
-        </Gate>
+    </Gate>
+  )
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AppRoutes />
       </BrowserRouter>
     </QueryClientProvider>
   )

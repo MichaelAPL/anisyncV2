@@ -5,6 +5,7 @@ import type { Account, Me, MirrorResult, SyncRun } from '../api/types'
 import { clock, relative, utcHour } from '../format'
 import { Icon } from '../ui/Icon'
 import { ProviderChip } from '../ui/Provider'
+import { Loading } from '../ui/Loading'
 import { Topbar } from '../ui/Shell'
 
 import { setupDone } from '../setup'
@@ -44,6 +45,8 @@ export function Dashboard() {
   // New users are walked through linking their lists until they've synced once or chosen to skip.
   const setupComplete = setupDone() || me.accounts.some((a) => a.last_synced_at)
   if (!setupComplete && me.accounts.length < (providers.data?.length ?? 2)) return <Navigate to="/link" replace />
+
+  if (!providers.data) return <Loading />
 
   const master: Account | undefined = me.accounts.find((a) => a.is_master)
   const mirrors = me.accounts.filter((a) => !a.is_master)

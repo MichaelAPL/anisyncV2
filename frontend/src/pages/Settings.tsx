@@ -10,6 +10,7 @@ import { relative } from '../format'
 import { setTheme, useTheme, type Theme } from '../theme'
 import { Avatar } from '../ui/Avatar'
 import { Icon } from '../ui/Icon'
+import { Loading } from '../ui/Loading'
 import { ProviderChip } from '../ui/Provider'
 import { Topbar } from '../ui/Shell'
 import { safeImage } from '../ui/images'
@@ -215,6 +216,7 @@ export function Settings() {
   const me = useOutletContext<Me>()
   const providers = useProviders()
   const name = (id: string) => providers.data?.find((p) => p.id === id)?.name ?? id
+  if (!providers.data) return <Loading />
   return (
     <>
       <Topbar title="Settings" me={me} />

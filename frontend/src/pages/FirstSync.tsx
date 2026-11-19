@@ -95,6 +95,7 @@ function Body({ me }: { me: Me }) {
   const current = results.find((r) => r.provider === tab) ?? results[0]
   const failed = results.filter((r) => r.error)
 
+  if (!providers.data) return <p className="body-l muted" style={{ padding: 24 }} role="status">Loading…</p>
   const loadError = preview.error instanceof ApiError ? preview.error.message : preview.isError ? "Couldn't reach AniSync." : null
 
   return (

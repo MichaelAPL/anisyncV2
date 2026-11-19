@@ -38,6 +38,7 @@ function Body({ me }: { me: Me }) {
   const name = (id: string) => providers.data?.find((p) => p.id === id)?.name ?? id
   const master = me.accounts.find((a) => a.is_master)
   const mirrors = me.accounts.filter((a) => !a.is_master)
+  if (!providers.data) return <p className="body-l muted" style={{ padding: 24 }} role="status">Loading…</p>
   const recent = [...me.accounts].sort((a, b) => (b.last_synced_at ?? '').localeCompare(a.last_synced_at ?? ''))[0]
 
   return (

@@ -114,6 +114,7 @@ uv run ruff check --fix src tests && uv run ruff format src tests
 uv run alembic revision --autogenerate -m "..."   # after model changes (ignores procrastinate_* tables)
 
 cd ../frontend && npm install && npm run dev      # http://localhost:5173
+cd ../frontend && npm test                       # Vitest + Testing Library (jsdom), fetch stubbed per test (src/test/harness.tsx)
 ```
 
 OAuth redirect URIs (register with each redirect-flow provider): `http://localhost:5173/auth/<provider id>/callback`

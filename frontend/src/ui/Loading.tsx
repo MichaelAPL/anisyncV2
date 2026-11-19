@@ -43,3 +43,8 @@ export function PreviewLoading({ master, mirrors }: { master: string | undefined
     </div>
   )
 }
+
+/** Short wait while names the screen needs (like the providers' display names) arrive. */
+export function Loading() {
+  return <p className="body-l muted" style={{ padding: 24 }} role="status">Loading…</p>
+}

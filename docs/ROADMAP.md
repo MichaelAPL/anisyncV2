@@ -318,8 +318,10 @@ maintenance) under `/admin`. Checked in Chrome against the real backend with a s
 and all admin pages load and the admin pages show live data. **Not verified:** phone layouts and the bottom sheet (the browser
 window couldn't be resized), light mode, anything needing real provider tokens (list load, sync, previews), the admin write
 actions (ban, role, pause, import) in the UI, real OAuth. **Not built:** "Add anime" (needs a title search endpoint that doesn't
-exist), donation card (no platform chosen), Vitest and Playwright tests, a chart on the admin overview (a table for now).
+exist), donation card (no platform chosen), a Playwright browser smoke test (needs a browser download), a chart on the admin overview (a table for now).
 Known gaps: `/api/list` answers 500 when the provider itself fails (fix while testing with real accounts).
+**5.8 frontend tests done 2026-11-19:** Vitest + Testing Library, 45 tests (`npm test`): image host allow-list, relative times, theme, landing (paused provider, maintenance), link lists (Kitsu form errors), choose master, review (loading view, filters, apply once, errors), dashboard (setup redirect, expiry warning, sync), my list (filters, score on the 0-100 scale, undo, remove confirm), settings (name, theme, delete phrase, unlink), admin (permission gating, ban reason, delete confirm, site, provider pause). `fetch` is stubbed per test and an unmatched request fails the test. Six deliberate breaks each failed a test. The tests found a real bug (provider ids flashed in lowercase before names loaded); screens now wait for the providers list.
+*Real-account fixes after the first sync test:* Kitsu's login endpoint returned 403 (bot protection) to the default HTTP User-Agent, now every provider request sends `User-Agent: AniSync/0.1` (`anisync/http.py`); the setup flow now continues until the first applied sync or an explicit skip.
 Settings, profile screens, admin screens, Privacy page, maintenance page, banner, tests (Vitest + a Playwright smoke test).
 
 
