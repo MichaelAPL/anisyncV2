@@ -287,6 +287,22 @@ Stack notes (checked 2026-11-17, no stack change needed):
 - [ ] **4.16 Abuse limits.** Cooldown on manual "sync now" per user (e.g. once per 15 min) and on list edits per
       minute; admin list of users who hit limits often.
 
+### Later, only if users ask: email + password sign-in
+
+Decided 2026-11-18 to stay with provider OAuth for now. Every user needs a provider account to sync anything, so an
+email login adds a step without removing one, and Kitsu users already sign in with their Kitsu credentials. Costs:
+email delivery (SPF/DKIM, deliverability), holding emails and password hashes (privacy liability), fake registrations
+and "no link arrived" support. Revisit if users ask for it or a provider's OAuth becomes unreliable.
+Design if we do it (nothing built now blocks it; a user with no linked accounts is already valid):
+- [ ] `users.email` (unique on lower()), `users.password_hash` (nullable, argon2id, min length 10), `email_verified_at`;
+      `email_tokens` (user, SHA-256 token hash, purpose verify|reset, expiry, single use).
+- [ ] `POST /auth/register` (always "check your email"; an existing address gets a notice mail instead), verify link,
+      `POST /auth/login` (generic error, unverified = wrong password, dummy hash for unknown emails), resend, password
+      reset (ends other sessions). Rate limits per IP and per email. Unverified users can't sign in.
+- [ ] A mail interface (log in dev/tests, SMTP in production); daily purge of expired tokens and unverified
+      registrations older than 7 days; admin lookup shows email and verified status; frontend onboarding state for
+      "no linked accounts yet".
+
 ## Phase 5: Frontend
 
 - [ ] Public pages (landing, about, privacy) prerendered to static HTML at build time for SEO and future ads;
