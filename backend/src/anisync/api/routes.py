@@ -356,9 +356,11 @@ async def delete_entry(media_id: str, user: CurrentUser, session: Session) -> Ok
 
 
 @router.post("/sync")
-async def trigger_sync(user: CurrentUser) -> QueuedOut:
+async def trigger_sync(user: CurrentUser, session: Session) -> QueuedOut:
     if user.master is None:
         raise HTTPException(400, "Pick a master list first")
+    if await sync.running_run(session, user.id) is not None:
+        raise HTTPException(409, "A sync is already running. It will show up under recent activity when it's done")
     queued = await jobs.enqueue_user_sync(user.id, "manual")
     return QueuedOut(queued=queued)
 

@@ -49,6 +49,13 @@ describe('dashboard', () => {
     expect(screen.getByText('Running')).toBeInTheDocument()
   })
 
+  it('shows the server message when a sync is already running', async () => {
+    stubApi({ 'GET /api/sync/runs': [], 'POST /api/sync': { __status: 409, detail: 'A sync is already running.' } })
+    renderRoute('/dashboard')
+    await userEvent.setup().click(await screen.findByRole('button', { name: /sync now/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('A sync is already running.')
+  })
+
   it('does not let a run that never finished block the button forever', async () => {
     const stale = [{ id: 1, trigger: 'scheduled', status: 'running', started_at: new Date(Date.now() - 20 * 60_000).toISOString(), finished_at: null, summary: {} }]
     stubApi({ 'GET /api/sync/runs': stale })

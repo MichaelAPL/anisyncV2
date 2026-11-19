@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useOutletContext } from 'react-router'
+import { ApiError } from '../api/client'
 import { useProviders, useRuns, useStartSync } from '../api/hooks'
 import type { Account, Me, MirrorResult, SyncRun } from '../api/types'
 import { clock, isRunning, relative, utcHour } from '../format'
@@ -92,7 +93,11 @@ export function Dashboard() {
             </div>
           </section>
         )}
-        {start.isError && <p className="body-m" role="alert" style={{ color: 'var(--error)' }}>Couldn't start the sync. Try again.</p>}
+        {start.isError && (
+          <p className="body-m" role="alert" style={{ color: 'var(--error)' }}>
+            {start.error instanceof ApiError ? start.error.message : "Couldn't start the sync. Try again."}
+          </p>
+        )}
 
         <section aria-labelledby="mirrors-h" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <h2 id="mirrors-h" className="title-l">Mirrors</h2>

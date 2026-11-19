@@ -73,6 +73,7 @@ class FakeClient(ProviderClient):
     AVATARS: ClassVar[dict[str, str | None]] = {}  # provider id -> the picture its whoami reports
     FAIL_ON: ClassVar[set[str]] = set()  # media ids whose save raises
     REJECT_TOKENS: ClassVar[bool] = False  # simulate a revoked token
+    FETCH_ERROR: ClassVar[Exception | None] = None  # raised by every list read (an outage, a timeout)
     REQUESTS: ClassVar[list[tuple[str, str]]] = []  # (provider id, "full" | "since" | "save" | "delete")
     _clock: ClassVar[int] = 0
 
@@ -96,6 +97,8 @@ class FakeClient(ProviderClient):
 
     async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
         FakeClient.REQUESTS.append((self.provider_id, "full" if since is None else "since"))
+        if FakeClient.FETCH_ERROR is not None:
+            raise FakeClient.FETCH_ERROR
         if FakeClient.REJECT_TOKENS:
             raise ReauthRequired("revoked")
         entries = list(self._store().values())
@@ -140,6 +143,7 @@ def reset_fakes() -> None:
     FakeClient.FAIL_ON = set()
     FakeClient.AVATARS = {}
     FakeClient.REJECT_TOKENS = False
+    FakeClient.FETCH_ERROR = None
     FakeClient.REQUESTS = []
 
 

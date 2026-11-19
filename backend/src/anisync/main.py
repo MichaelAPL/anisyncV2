@@ -3,6 +3,7 @@ import contextlib
 import logging
 from collections.abc import AsyncIterator
 
+import httpx
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -10,6 +11,8 @@ from anisync import jobs, logs, metrics, moderation
 from anisync.api import admin, admin_dataset, admin_site, admin_syncs, admin_titles, admin_users, auth, public, routes
 from anisync.config import get_settings
 from anisync.db import SessionLocal
+from anisync.providers import get_provider, is_registered
+from anisync.providers.base import RateLimited
 from anisync.security import CsrfMiddleware, RequestIdMiddleware
 
 logs.configure()
@@ -42,6 +45,20 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 # No interactive API docs in production.
 docs = {} if not settings.is_production else {"docs_url": None, "redoc_url": None, "openapi_url": None}
 app = FastAPI(title="AniSync", lifespan=lifespan, dependencies=[Depends(public.maintenance_guard)], **docs)
+
+
+@app.exception_handler(RateLimited)
+async def provider_busy(request: Request, exc: RateLimited) -> JSONResponse:
+    """A list site told us to slow down: say so (and for how long) instead of a generic server error."""
+    name = get_provider(exc.provider_id).name if is_registered(exc.provider_id) else "A list site"
+    return JSONResponse({"detail": f"{name} is busy right now. Try again in a minute"}, status_code=429)
+
+
+@app.exception_handler(httpx.HTTPError)
+async def provider_unreachable(request: Request, exc: httpx.HTTPError) -> JSONResponse:
+    """A list site failed or timed out. Our server is fine, so this is a 502 with a message the user can act on."""
+    log.warning("provider request failed on %s %s: %s", request.method, request.url.path, type(exc).__name__)
+    return JSONResponse({"detail": "A list site isn't responding right now. Try again in a moment"}, status_code=502)
 
 
 @app.exception_handler(Exception)

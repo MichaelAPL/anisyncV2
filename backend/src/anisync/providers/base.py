@@ -95,6 +95,7 @@ class RemoteUser:
 class RateLimited(Exception):
     def __init__(self, provider_id: str, retry_after: float | None):
         super().__init__(f"{provider_id} rate limited (retry after {retry_after}s)")
+        self.provider_id = provider_id
         self.retry_after = retry_after
 
 

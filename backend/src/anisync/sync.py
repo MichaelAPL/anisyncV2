@@ -150,6 +150,36 @@ async def apply_plan(
     return errors
 
 
+RUN_STALE_AFTER = timedelta(minutes=15)  # an unfinished run older than this is treated as dead, not as running
+_RUN_LOCK = 7001  # advisory-lock namespace: one sync start per user at a time
+
+
+async def running_run(session: AsyncSession, user_id: int) -> SyncRun | None:
+    """The user's sync that is in progress right now, if any."""
+    return await session.scalar(
+        select(SyncRun)
+        .where(
+            SyncRun.user_id == user_id,
+            SyncRun.finished_at.is_(None),
+            SyncRun.started_at > datetime.now(UTC) - RUN_STALE_AFTER,
+        )
+        .order_by(SyncRun.id.desc())
+        .limit(1)
+    )
+
+
+async def start_run(session: AsyncSession, user_id: int, trigger: str) -> SyncRun | None:
+    """Open a run for the user, or None when one is already in progress. Checked and created under a per-user lock so
+    two workers starting at the same moment can't both win (the lock is held until the run row is committed)."""
+    await session.execute(select(func.pg_advisory_xact_lock(_RUN_LOCK, user_id)))
+    if await running_run(session, user_id) is not None:
+        return None  # the lock is released when this transaction ends
+    run = SyncRun(user_id=user_id, trigger=trigger, summary={})
+    session.add(run)
+    await session.commit()
+    return run
+
+
 async def run_sync(
     session: AsyncSession, user_id: int, trigger: str, dry_run: bool = False, full: bool = False
 ) -> dict:
@@ -164,10 +194,25 @@ async def run_sync(
         return {"skipped": f"{get_provider(user.master.provider).name} is paused"}
     run = None
     if not dry_run:
-        run = SyncRun(user_id=user.id, trigger=trigger, summary={})
-        session.add(run)
-        await session.commit()
+        run = await start_run(session, user.id, trigger)
+        if run is None:
+            return {"skipped": "a sync is already running"}
+    try:
+        return await _sync_mirrors(session, user, run, paused, dry_run, full)
+    except BaseException:
+        if run is not None:  # never leave a run "running" behind: the dashboard and admins read it as in progress
+            await session.rollback()
+            failed = await session.get(SyncRun, run.id)
+            if failed is not None:
+                failed.status, failed.finished_at = "error", datetime.now(UTC)
+                failed.summary = failed.summary or {"error": "the sync stopped unexpectedly"}
+                await session.commit()
+        raise
 
+
+async def _sync_mirrors(
+    session: AsyncSession, user: User, run: SyncRun | None, paused: dict, dry_run: bool, full: bool
+) -> dict:
     master = user.master
     summary: dict = {}
     master_read = await refresh_snapshot(session, master, await client_for(master, session), is_master=True, full=full)
