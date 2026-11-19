@@ -7,10 +7,7 @@ import { Icon } from '../ui/Icon'
 import { ProviderChip } from '../ui/Provider'
 import { Topbar } from '../ui/Shell'
 
-const SKIP = 'anisync-skip-onboarding'
-const skipped = () => {
-  try { return localStorage.getItem(SKIP) === '1' } catch { return false }
-}
+import { setupDone } from '../setup'
 const TRIGGER: Record<string, string> = { scheduled: 'Daily sync', manual: 'Sync now', edit: 'Edit', preview: 'Preview' }
 
 function summarize(run: SyncRun, name: (id: string) => string): string {
@@ -44,7 +41,9 @@ export function Dashboard() {
     return () => clearTimeout(t)
   }, [clicked])
 
-  if (me.accounts.length < 2 && !skipped()) return <Navigate to="/link" replace />
+  // New users are walked through linking their lists until they've synced once or chosen to skip.
+  const setupComplete = setupDone() || me.accounts.some((a) => a.last_synced_at)
+  if (!setupComplete && me.accounts.length < (providers.data?.length ?? 2)) return <Navigate to="/link" replace />
 
   const master: Account | undefined = me.accounts.find((a) => a.is_master)
   const mirrors = me.accounts.filter((a) => !a.is_master)

@@ -118,3 +118,18 @@ async def test_kitsu_lookup_external_ids_uses_mappings():
     assert route.calls[0].request.url.params["filter[externalSite]"] == "myanimelist/anime"
     with pytest.raises(NotImplementedError):
         await kitsu.KitsuClient(None).lookup_external_ids("kitsu", ["1"])
+
+
+@respx.mock
+async def test_every_provider_request_names_the_client_instead_of_the_library_default():
+    # Kitsu's token endpoint answers 403 to the default python-httpx agent (bot protection), so we always send our own.
+    route = respx.post(kitsu.TOKEN_URL).mock(
+        return_value=httpx.Response(200, json={"access_token": "a", "refresh_token": "r", "expires_in": 100})
+    )
+    await kitsu.password_login("a@example.com", "pw")
+    assert route.calls.last.request.headers["User-Agent"] == "AniSync/0.1"
+    api_route = respx.get(f"{kitsu.API}/users").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "1", "attributes": {"name": "k"}}]})
+    )
+    await kitsu.KitsuClient("tok").whoami()
+    assert api_route.calls.last.request.headers["User-Agent"] == "AniSync/0.1"

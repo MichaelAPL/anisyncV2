@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
+import { finishSetup } from '../setup'
 import { ApiError } from '../api/client'
 import { useLinkWithPassword, useProviders } from '../api/hooks'
 import type { Me, ProviderInfo } from '../api/types'
@@ -79,6 +80,7 @@ function ProviderCard({ provider, me }: { provider: ProviderInfo; me: Me }) {
 
 export function LinkLists() {
   const providers = useProviders()
+  const navigate = useNavigate()
   return (
     <RequireUser>
       {(me) => {
@@ -94,11 +96,14 @@ export function LinkLists() {
             {list.map((p) => <ProviderCard key={p.id} provider={p} me={me} />)}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
               <span className="body-m muted">{linked} of {list.length} linked</span>
-              {linked >= 2 ? (
-                <Link to="/master" className="btn btn-filled">Continue <Icon name="arrow-right" size={18} /></Link>
-              ) : (
-                <span className="body-m muted">Link one more list to continue</span>
-              )}
+              <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn-text" onClick={() => { finishSetup(); navigate('/dashboard') }}>Skip for now</button>
+                {linked >= 2 ? (
+                  <Link to="/master" className="btn btn-filled">Continue <Icon name="arrow-right" size={18} /></Link>
+                ) : (
+                  <span className="body-m muted">Link one more list to continue</span>
+                )}
+              </span>
             </div>
           </OnboardingLayout>
         )

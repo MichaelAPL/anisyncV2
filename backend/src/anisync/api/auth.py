@@ -141,7 +141,13 @@ async def link_with_password(provider_id: str, body: PasswordLogin, session: Ses
     try:
         tokens = await provider.password_login(body.username, body.password)
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(400, f"{provider.name} rejected those credentials") from exc
+        if exc.response.status_code in (400, 401):
+            raise HTTPException(400, f"{provider.name} rejected those credentials") from exc
+        raise HTTPException(
+            502, f"{provider.name} didn't accept the login request ({exc.response.status_code}). Try again later"
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"Couldn't reach {provider.name}. Try again later") from exc
     try:
         await _link_account(session, user, provider, tokens)
     except PermissionError as exc:

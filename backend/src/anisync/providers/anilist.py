@@ -9,8 +9,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
-import httpx
-
+from anisync.http import client as http_client
 from anisync.providers.base import (
     AuthKind,
     ListEntry,
@@ -116,7 +115,7 @@ def authorize_url(state: str, code_verifier: str | None, redirect_uri: str) -> s
 
 async def exchange_code(code: str, code_verifier: str | None, redirect_uri: str) -> TokenSet:
     s = credentials("anilist")
-    async with httpx.AsyncClient(timeout=30) as http:
+    async with http_client() as http:
         resp = await http.post(
             TOKEN_URL,
             json={

@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from anisync import logs
 from anisync.config import get_settings
+from anisync.http import client as http_client
 from anisync.mapping import KnownTitle, existing_pairs
 from anisync.models import DatasetImport, Media, MediaExternalId
 from anisync.providers import all_providers
@@ -182,7 +183,7 @@ async def run_import(
     """Stream the dataset and import it in batches (committing each). Skips it if this version was already imported."""
     url = url or get_settings().id_dataset_url
     owns_http = http is None
-    http = http or httpx.AsyncClient(timeout=httpx.Timeout(30, read=120), follow_redirects=True)
+    http = http or http_client(timeout=httpx.Timeout(30, read=120), follow_redirects=True)
     run = DatasetImport(dataset=DATASET, status="running")
     session.add(run)
     await session.commit()

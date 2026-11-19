@@ -4,6 +4,7 @@ import { ApiError } from '../api/client'
 import { useProviders, useStartSync, useSyncPreview } from '../api/hooks'
 import type { Change, Me, MirrorResult } from '../api/types'
 import { Icon } from '../ui/Icon'
+import { finishSetup } from '../setup'
 import { OnboardingLayout, RequireUser } from '../ui/Onboarding'
 import { ProviderChip } from '../ui/Provider'
 
@@ -133,7 +134,7 @@ function Body({ me }: { me: Me }) {
           type="button"
           className="btn btn-filled"
           disabled={!preview.data || failed.length > 0 || start.isPending}
-          onClick={() => start.mutate(undefined, { onSuccess: () => navigate('/dashboard') })}
+          onClick={() => start.mutate(undefined, { onSuccess: () => { finishSetup(); navigate('/dashboard') } })}
         >
           {start.isPending ? 'Starting…' : `Apply to ${results.map((r) => name(r.provider)).join(' and ') || 'mirrors'}`}
         </button>

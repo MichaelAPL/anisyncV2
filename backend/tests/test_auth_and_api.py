@@ -109,6 +109,17 @@ async def test_rejected_credentials_are_reported_without_leaking_details(client)
     assert response.status_code == 400 and response.json() == {"detail": "Kitsu rejected those credentials"}
 
 
+async def test_a_blocked_or_unreachable_provider_is_not_reported_as_wrong_credentials(client):
+    await sign_in_with_mal(client)
+    with respx.mock:
+        respx.post(kitsu.TOKEN_URL).mock(return_value=httpx.Response(403, text="Just a moment..."))
+        blocked = await client.post("/auth/kitsu/password", json={"username": "a", "password": "b"})
+        respx.post(kitsu.TOKEN_URL).mock(side_effect=httpx.ConnectError("down"))
+        down = await client.post("/auth/kitsu/password", json={"username": "a", "password": "b"})
+    assert blocked.status_code == 502 and "wrong" not in blocked.text and "rejected" not in blocked.text
+    assert down.status_code == 502 and "reach Kitsu" in down.json()["detail"]
+
+
 async def test_editing_the_master_list_queues_one_push_per_mirror(client):
     await sign_in_with_mal(client)
     with respx.mock:

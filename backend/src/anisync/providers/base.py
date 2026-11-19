@@ -30,6 +30,7 @@ from aiolimiter import AsyncLimiter
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from anisync import metrics
+from anisync.http import client as http_client
 from anisync.providers.registry import get_provider
 
 
@@ -230,7 +231,7 @@ class ProviderClient(abc.ABC):
     ):
         self.access_token = access_token
         self.remote_user_id = remote_user_id
-        self.http = http or httpx.AsyncClient(timeout=30)
+        self.http = http or http_client()
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         headers = kwargs.pop("headers", {})

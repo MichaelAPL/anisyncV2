@@ -8,8 +8,7 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlencode
 
-import httpx
-
+from anisync.http import client as http_client
 from anisync.providers.base import (
     AuthKind,
     ListEntry,
@@ -68,7 +67,7 @@ def _token_set(data: dict) -> TokenSet:
 
 async def exchange_code(code: str, code_verifier: str | None, redirect_uri: str) -> TokenSet:
     s = credentials("mal")
-    async with httpx.AsyncClient(timeout=30) as http:
+    async with http_client() as http:
         resp = await http.post(
             TOKEN_URL,
             data={
@@ -86,7 +85,7 @@ async def exchange_code(code: str, code_verifier: str | None, redirect_uri: str)
 
 async def refresh(refresh_token: str) -> TokenSet:
     s = credentials("mal")
-    async with httpx.AsyncClient(timeout=30) as http:
+    async with http_client() as http:
         resp = await http.post(
             TOKEN_URL,
             data={

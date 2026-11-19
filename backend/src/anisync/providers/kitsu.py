@@ -9,8 +9,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import httpx
-
+from anisync.http import client as http_client
 from anisync.providers.base import (
     AuthKind,
     ListEntry,
@@ -54,7 +53,7 @@ async def _token_request(form: dict[str, str]) -> TokenSet:
     s = credentials("kitsu")
     if s.client_id:
         form |= {"client_id": s.client_id, "client_secret": s.client_secret}
-    async with httpx.AsyncClient(timeout=30) as http:
+    async with http_client() as http:
         resp = await http.post(TOKEN_URL, data=form)
         resp.raise_for_status()
         return _token_set(resp.json())

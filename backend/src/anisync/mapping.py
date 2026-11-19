@@ -22,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from anisync.http import client as http_client
 from anisync.models import LookupMiss, Media, MediaExternalId
 from anisync.providers import get_provider, is_registered
 from anisync.providers.base import ListEntry, ProviderClient
@@ -74,7 +75,7 @@ class IdMapper:
 
     async def __aenter__(self) -> "IdMapper":
         if self._http is None:
-            self._http = httpx.AsyncClient(timeout=30)
+            self._http = http_client()
         return self
 
     async def __aexit__(
@@ -87,7 +88,7 @@ class IdMapper:
     def _client(self, provider_id: str) -> ProviderClient:
         """A client without a user token: lookups only use public endpoints."""
         if provider_id not in self._clients:
-            http = self._http or httpx.AsyncClient(timeout=30)
+            http = self._http or http_client()
             self._http = http
             self._clients[provider_id] = get_provider(provider_id).client(access_token=None, http=http)
         return self._clients[provider_id]
