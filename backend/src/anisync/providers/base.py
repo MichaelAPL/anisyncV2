@@ -16,6 +16,7 @@ import abc
 import asyncio
 import dataclasses
 import re
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -28,6 +29,7 @@ import httpx
 from aiolimiter import AsyncLimiter
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from anisync import metrics
 from anisync.providers.registry import get_provider
 
 
@@ -234,8 +236,14 @@ class ProviderClient(abc.ABC):
         headers = kwargs.pop("headers", {})
         if self.access_token:
             headers["Authorization"] = f"Bearer {self.access_token}"
-        async with self.limiter:
-            resp = await self.http.request(method, url, headers=headers, **kwargs)
+        started = time.monotonic()
+        try:
+            async with self.limiter:
+                resp = await self.http.request(method, url, headers=headers, **kwargs)
+        except Exception:
+            metrics.record(self.provider_id, None, time.monotonic() - started)
+            raise
+        metrics.record(self.provider_id, resp.status_code, time.monotonic() - started)
         if resp.status_code == 429:
             retry_after = resp.headers.get("Retry-After")
             raise RateLimited(self.provider_id, float(retry_after) if retry_after else None)

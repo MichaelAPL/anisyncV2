@@ -1,13 +1,14 @@
 """Admin endpoints (`/api/admin/*`). Each route declares the permission it needs; the router as a whole also
 refuses users without any permission."""
 
-from datetime import datetime
+from dataclasses import asdict
+from datetime import date, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from anisync import moderation, permissions
+from anisync import moderation, permissions, stats
 from anisync.api.deps import Session, require_any_permission, require_permission
 from anisync.models import User
 
@@ -72,3 +73,67 @@ async def set_user_role(
     admin: Annotated[User, Depends(require_permission(permissions.ROLES_MANAGE))],
 ) -> AdminUserOut:
     return AdminUserOut.model_validate(await _run(moderation.set_role(session, admin, user_id, body.role)))
+
+
+# ---- statistics ---------------------------------------------------------------------------------------------
+
+
+class ProviderAccountsOut(BaseModel):
+    provider: str
+    accounts: int
+    masters: int  # users who chose this provider as their master
+    needs_relink: int
+    expiring_soon: int
+
+
+class OverviewOut(BaseModel):
+    users_total: int
+    users_with_master: int
+    new_today: int
+    new_7d: int
+    active_7d: int
+    active_30d: int
+    banned: int
+    providers: list[ProviderAccountsOut]
+
+
+class DayOut(BaseModel):
+    day: date
+    new_users: int
+    runs_ok: int
+    runs_error: int
+    changes: int
+
+
+class ProviderRequestsOut(BaseModel):
+    day: date
+    provider: str
+    requests: int
+    rate_limited: int
+    errors: int
+    avg_ms: int
+
+
+class DailyOut(BaseModel):
+    days: list[DayOut]
+    provider_requests: list[ProviderRequestsOut]
+
+
+@router.get("/stats/overview")
+async def stats_overview(
+    session: Session, admin: Annotated[User, Depends(require_permission(permissions.STATS_READ))]
+) -> OverviewOut:
+    return OverviewOut.model_validate(asdict(await stats.overview(session)))
+
+
+@router.get("/stats/daily")
+async def stats_daily(
+    session: Session,
+    admin: Annotated[User, Depends(require_permission(permissions.STATS_READ))],
+    days: Annotated[int, Query(ge=1, le=60)] = 14,
+) -> DailyOut:
+    series, requests = await stats.daily(session, days)
+    return DailyOut(
+        days=[DayOut.model_validate(asdict(d)) for d in series],
+        provider_requests=[ProviderRequestsOut.model_validate(asdict(r)) for r in requests],
+    )

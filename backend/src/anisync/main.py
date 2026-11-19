@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from anisync import jobs, logs, moderation
+from anisync import jobs, logs, metrics, moderation
 from anisync.api import admin, auth, routes
 from anisync.config import get_settings
 from anisync.db import SessionLocal
@@ -30,6 +30,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         try:
             yield
         finally:
+            async with SessionLocal() as session:
+                with contextlib.suppress(Exception):
+                    await metrics.flush(session)
             if worker:
                 worker.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

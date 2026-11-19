@@ -12,7 +12,7 @@ import httpx
 from procrastinate import App, PsycopgConnector, RetryStrategy
 from procrastinate.exceptions import AlreadyEnqueued
 
-from anisync import ratelimit, seed, sessions, sync
+from anisync import metrics, ratelimit, seed, sessions, sync
 from anisync.config import get_settings
 from anisync.db import SessionLocal
 from anisync.providers.base import ListEntry, RateLimited
@@ -38,6 +38,14 @@ async def sync_tick(timestamp: int) -> None:
         user_ids = await sync.users_in_slot(session, hour)
     for user_id in user_ids:
         await enqueue_user_sync(user_id, "scheduled")
+
+
+@app.periodic(cron="*/5 * * * *", periodic_id="flush-metrics")
+@app.task(queue="maintenance", queueing_lock="flush-metrics")
+async def flush_metrics(timestamp: int) -> None:
+    """Write the provider request counters collected in memory to the database (also done at shutdown)."""
+    async with SessionLocal() as session:
+        await metrics.flush(session)
 
 
 @app.periodic(cron="30 3 * * *", periodic_id="housekeeping")

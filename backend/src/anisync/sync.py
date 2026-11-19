@@ -221,6 +221,7 @@ async def run_sync(
     if run is not None:
         run.summary = summary
         run.status = "error" if any("error" in s for s in summary.values()) else "ok"
+        run.changes = sum(s.get("create", 0) + s.get("update", 0) + s.get("delete", 0) for s in summary.values())
         run.finished_at = datetime.now(UTC)
         await session.commit()
     return summary

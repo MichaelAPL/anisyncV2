@@ -221,8 +221,9 @@ class SyncRun(Base):
     status: Mapped[str] = mapped_column(String(20), default="running")  # running | ok | error
     # {"<account_id>": {"created": n, "updated": n, "deleted": n, "unmapped": [...], "errors": [...]}}
     summary: Mapped[dict] = mapped_column(JSON, default=dict)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    changes: Mapped[int] = mapped_column(default=0, server_default="0")  # entries created, updated or deleted
 
 
 class SyncRunEvent(Base):
@@ -281,3 +282,16 @@ class AdminAction(Base):
     note: Mapped[str | None] = mapped_column(String(500))
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProviderStat(Base):
+    """Requests we made to a provider on one UTC day (see `metrics.py`)."""
+
+    __tablename__ = "provider_stats"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), primary_key=True)
+    requests: Mapped[int] = mapped_column(default=0)
+    rate_limited: Mapped[int] = mapped_column(default=0)  # answered with HTTP 429
+    errors: Mapped[int] = mapped_column(default=0)  # HTTP 4xx/5xx other than 429, or no answer at all
+    total_ms: Mapped[int] = mapped_column(default=0)  # sum of response times, for the average

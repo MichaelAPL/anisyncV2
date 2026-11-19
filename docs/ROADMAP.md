@@ -21,7 +21,7 @@ Update this file at the end of every working session. Work the phases in order; 
 - **Phase 2 done** (security hardening, see below). Migration `a7d3c9e15f02`.
 - **Phase 3 done** (sync efficiency, see below). Migration `c5e2b8f94a13`. 268 backend tests.
 - **Profile (display name + picture) done 2026-11-19** (migration `f2c6e9a41b78`, 332 backend tests): `PATCH /api/me`, `PUT|DELETE /api/me/avatar`, see Phase 5 for the screens.
-- **Phase 4 in progress:** 4.0 roles, 4.1 bans and 4.2 sync events done (migrations `d6f3a9b7c201`, `e8b4c1d92a65`, 297 backend tests).
+- **Phase 4 in progress:** 4.0 roles, 4.1 bans, 4.2 sync events and 4.3 stats done (migrations `d6f3a9b7c201`, `e8b4c1d92a65`, `a9e1d4c7b630`, 344 backend tests).
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
 
@@ -247,7 +247,7 @@ Stack notes (checked 2026-11-17, no stack change needed):
 - [x] **4.2 Sync logs.** *(done: `sync_run_events` with `level`, `kind` = change_failed | rate_limited | reauth | unmapped | drifted, at most 50 per mirror per run with `events_dropped` in the summary, deleted with their run; migration `e8b4c1d92a65`. The admin screens that read them are 4.4/4.5.)* `sync_runs` `trigger` values become `scheduled` | `manual` | `edit` (a run's `read`/`drifted` fields already say whether it did a full reconcile), and a
       `sync_run_events` table (run_id, account_id, level, message, media ref, created_at) for per-entry failures,
       re-auth errors and rate-limit hits. Retention ties into 3.5 (keep ~30 days).
-- [ ] **4.3 Stats endpoints.** Users (total, new per day/week, active in last 7/30 days, banned); linked accounts per
+- [x] **4.3 Stats endpoints.** *(done: `GET /api/admin/stats/overview` and `/stats/daily?days=` (1-60), `stats.read`. Deviation from the stack note: no `daily_stats` rollup yet; users, accounts and sync outcomes are live queries on indexed columns (sync runs are kept 30 days), and only provider request counts are stored (`provider_stats`, filled from in-memory counters in `metrics.py`, flushed every 5 minutes and at shutdown). "Active" = users with a browser session seen in the last 7/30 days. `sync_runs.changes` counts entries written per run. Migration `a9e1d4c7b630`.)*  Original spec:  Users (total, new per day/week, active in last 7/30 days, banned); linked accounts per
       provider; accounts needing re-auth; master choice per provider; per day: runs ok/failed, entries changed,
       provider requests and 429s per provider (needs request counting in `ServiceClient._request`).
 - [ ] **4.4 Sync status page.** The last scheduled runs and the weekly full reads: started/finished, users processed, failures, queue
