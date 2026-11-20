@@ -92,7 +92,7 @@ describe('ID conflicts', () => {
 
   it('lists what disagrees with the dataset, with links to check each claim', async () => {
     stubApi(stubs(), { me: admin })
-    renderRoute('/admin/titles')
+    renderRoute('/admin/titles?tab=conflicts')
     expect(await screen.findByText('Natsume Yuujinchou Shichi')).toBeInTheDocument()
     expect(screen.getByText(/seen 3 times/i)).toBeInTheDocument()
     const link = screen.getByRole('link', { name: /kitsu 2/i })
@@ -104,7 +104,7 @@ describe('ID conflicts', () => {
 
   it('only links to https pages', async () => {
     stubApi(stubs([conflict({ links: { kitsu: 'javascript:alert(1)', mal: 'http://myanimelist.net/anime/10' } })]), { me: admin })
-    renderRoute('/admin/titles')
+    renderRoute('/admin/titles?tab=conflicts')
     await screen.findByText('Natsume Yuujinchou Shichi')
     expect(screen.queryByRole('link', { name: /kitsu 2/i })).toBeNull()
     expect(screen.queryByRole('link', { name: /myanimelist 10/i })).toBeNull()
@@ -113,7 +113,7 @@ describe('ID conflicts', () => {
 
   it('keeps the dataset answer with a note, and can reopen it', async () => {
     const calls = stubApi(stubs([conflict()], { 'PUT /api/admin/titles/conflicts/7': conflict({ status: 'kept' }) }), { me: admin })
-    renderRoute('/admin/titles')
+    renderRoute('/admin/titles?tab=conflicts')
     const user = userEvent.setup()
     await user.type(await screen.findByLabelText('Note'), 'kitsu has the wrong anilist id')
     await user.click(screen.getByRole('button', { name: /keep the dataset's answer/i }))
@@ -125,7 +125,7 @@ describe('ID conflicts', () => {
       stubs([conflict({ status: 'kept', note: 'fine' })], { 'PUT /api/admin/titles/conflicts/7': conflict({ status: 'open' }) }),
       { me: admin },
     )
-    renderRoute('/admin/titles')
+    renderRoute('/admin/titles?tab=conflicts')
     const user = userEvent.setup()
     await user.click(await screen.findByRole('button', { name: /kept 0/i }))
     await waitFor(() => expect(calls.some((c) => c.path === '/api/admin/titles/conflicts?status=kept')).toBe(true))
@@ -136,9 +136,27 @@ describe('ID conflicts', () => {
 
   it('is not shown to an admin who may not link titles', async () => {
     const limited = makeMe({ role: 'moderator', permissions: ['users.read', 'titles.link'].filter((p) => p !== 'titles.link') })
-    stubApi({ 'GET /api/admin/titles/unmatched': [] }, { me: limited })
-    renderRoute('/admin/titles')
-    await screen.findByText(/nothing unmatched|unmatched titles/i)
+    const calls = stubApi({ 'GET /api/admin/titles/unmatched': [] }, { me: limited })
+    renderRoute('/admin/titles?tab=conflicts') // even when asked for by address
+    await screen.findByText('Nothing unmatched.')
     expect(screen.queryByText('ID conflicts')).toBeNull()
+    expect(screen.queryByRole('tab')).toBeNull()
+    expect(calls.some((c) => c.path.includes('/conflicts'))).toBe(false) // and it never asks the server
+  })
+
+  it('puts the two lists in tabs at the top, with how many each holds, and opens on the unmatched titles', async () => {
+    stubApi({ ...stubs([conflict(), conflict({ id: 8 })]), 'GET /api/admin/titles/unmatched': [
+      { source: 'mal', source_id: '1', target: 'anilist', title: 'Odd One', users: 1, first_seen_at: 'x', last_seen_at: new Date().toISOString() },
+    ] }, { me: admin })
+    renderRoute('/admin/titles')
+    const user = userEvent.setup()
+    expect(await screen.findByRole('tab', { name: /unmatched titles · 1/i })).toHaveAttribute('aria-selected', 'true')
+    const conflictsTab = screen.getByRole('tab', { name: /id conflicts · 2/i })
+    expect(screen.getByText('Odd One')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'ID conflicts' })).toBeNull()
+    await user.click(conflictsTab)
+    expect(await screen.findByRole('heading', { name: 'ID conflicts' })).toBeInTheDocument()
+    expect(conflictsTab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByText('Odd One')).toBeNull()
   })
 })

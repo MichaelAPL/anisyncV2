@@ -64,7 +64,7 @@ from anisync import sessions  # noqa: E402
 from anisync.db import SessionLocal  # noqa: E402
 from anisync.main import app  # noqa: E402
 from anisync.mapping import IdMapper  # noqa: E402
-from anisync.models import LinkedAccount, User  # noqa: E402
+from anisync.models import IdConflict, LinkedAccount, User  # noqa: E402
 from anisync.providers import get_provider  # noqa: E402
 from anisync.providers.base import ListEntry, Status, TokenSet  # noqa: E402
 from anisync.providers.registry import register, unregister  # noqa: E402
@@ -155,6 +155,7 @@ async def reset() -> dict:
     Config.save_delay = 0.0
     async with SessionLocal() as session:
         await session.execute(delete(User))
+        await session.execute(delete(IdConflict))  # decisions made in one test must not leak into the next
         await session.commit()
     return {"ok": True}
 

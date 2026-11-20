@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { ProviderChip } from '../ui/Provider'
 import { relative } from '../format'
@@ -164,39 +165,60 @@ function Conflicts() {
 }
 
 export function Titles() {
+  const [params, setParams] = useSearchParams()
+  const canLink = can(useAdmin(), 'titles.link')
+  const tab = canLink && params.get('tab') === 'conflicts' ? 'conflicts' : 'unmatched'
   const [q, setQ] = useState('')
   const list = useUnmatched({ q: q.trim() || undefined })
+  const conflicts = useConflicts('open', canLink) // only people who may link titles are allowed to ask
   const name = useProviderName()
   const [target, setTarget] = useState<Record<string, string>>({})
   const link = useAct((v: { source: string; source_id: string; target: string; target_id: string }) => post('/api/admin/titles/link', v))
   const key = (u: { source: string; source_id: string; target: string }) => `${u.source}:${u.source_id}:${u.target}`
-  const canLink = can(useAdmin(), 'titles.link')
+  const open = conflicts.data?.counts.open
+  const choose = (t: 'unmatched' | 'conflicts') => setParams(t === 'conflicts' ? { tab: 'conflicts' } : {}, { replace: true })
   return (
     <>
-      <AdminTop title="Unmatched titles" sub="Titles users have that no provider could translate. Link them by hand." />
+      <AdminTop title="Titles" sub="Titles the providers can't translate, and ID data that disagrees." />
       <main className="page" style={{ paddingTop: 0 }}>
-        <div className="search" role="search"><input type="search" aria-label="Search titles" placeholder="Search titles" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <Loading q={list} />
-        <section className="card-out list" aria-label="Unmatched titles" style={{ overflow: 'hidden' }}>
-          {list.data?.map((u) => (
-            <div key={key(u)} className="list-item" style={{ flexWrap: 'wrap', gap: '8px 16px' }}>
-              <div className="list-text" style={{ flex: '1 1 280px' }}>
-                <span className="title-m">{u.title}</span>
-                <span className="body-m muted">{name(u.source)} #{u.source_id} → {name(u.target)} · {u.users} user{u.users === 1 ? '' : 's'} · last seen {relative(u.last_seen_at)}</span>
-              </div>
-              {canLink && (
-                <form style={{ display: 'flex', gap: 8, alignItems: 'center' }} onSubmit={(e) => { e.preventDefault(); link.mutate({ ...u, target_id: (target[key(u)] ?? '').trim() }) }}>
-                  <div className="field" style={{ width: 160 }}><label htmlFor={`t-${key(u)}`}>{name(u.target)} id</label>
-                    <input id={`t-${key(u)}`} inputMode="numeric" value={target[key(u)] ?? ''} onChange={(e) => setTarget({ ...target, [key(u)]: e.target.value })} /></div>
-                  <button type="submit" className="btn btn-tonal" disabled={link.isPending || !(target[key(u)] ?? '').trim()}>Link</button>
-                </form>
-              )}
-            </div>
-          ))}
-          {list.data?.length === 0 && <p className="body-m muted" style={{ padding: 16 }}>Nothing unmatched.</p>}
-        </section>
-        {link.error instanceof ApiError ? <p className="body-m" role="alert" style={{ color: 'var(--error)' }}>{link.error.message}</p> : <Err error={link.error} />}
-        {canLink && <Conflicts />}
+        {canLink && (
+          <div className="tabs" role="tablist" aria-label="Titles">
+            <button type="button" role="tab" className="tab" aria-selected={tab === 'unmatched'} onClick={() => choose('unmatched')}>
+              Unmatched titles{list.data && !q.trim() ? ` · ${list.data.length}` : ''}
+            </button>
+            <button type="button" role="tab" className="tab" aria-selected={tab === 'conflicts'} onClick={() => choose('conflicts')}>
+              ID conflicts{open !== undefined ? ` · ${open}` : ''}
+            </button>
+          </div>
+        )}
+        {tab === 'conflicts' ? (
+          <Conflicts />
+        ) : (
+          <>
+            <p className="body-m muted">Titles users have that no provider could translate. Link them by hand.</p>
+            <div className="search" role="search"><input type="search" aria-label="Search titles" placeholder="Search titles" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <Loading q={list} />
+            <section className="card-out list" aria-label="Unmatched titles" style={{ overflow: 'hidden' }}>
+              {list.data?.map((u) => (
+                <div key={key(u)} className="list-item" style={{ flexWrap: 'wrap', gap: '8px 16px' }}>
+                  <div className="list-text" style={{ flex: '1 1 280px' }}>
+                    <span className="title-m">{u.title}</span>
+                    <span className="body-m muted">{name(u.source)} #{u.source_id} → {name(u.target)} · {u.users} user{u.users === 1 ? '' : 's'} · last seen {relative(u.last_seen_at)}</span>
+                  </div>
+                  {canLink && (
+                    <form style={{ display: 'flex', gap: 8, alignItems: 'center' }} onSubmit={(e) => { e.preventDefault(); link.mutate({ ...u, target_id: (target[key(u)] ?? '').trim() }) }}>
+                      <div className="field" style={{ width: 160 }}><label htmlFor={`t-${key(u)}`}>{name(u.target)} id</label>
+                        <input id={`t-${key(u)}`} inputMode="numeric" value={target[key(u)] ?? ''} onChange={(e) => setTarget({ ...target, [key(u)]: e.target.value })} /></div>
+                      <button type="submit" className="btn btn-tonal" disabled={link.isPending || !(target[key(u)] ?? '').trim()}>Link</button>
+                    </form>
+                  )}
+                </div>
+              ))}
+              {list.data?.length === 0 && <p className="body-m muted" style={{ padding: 16 }}>Nothing unmatched.</p>}
+            </section>
+            {link.error instanceof ApiError ? <p className="body-m" role="alert" style={{ color: 'var(--error)' }}>{link.error.message}</p> : <Err error={link.error} />}
+          </>
+        )}
       </main>
     </>
   )
