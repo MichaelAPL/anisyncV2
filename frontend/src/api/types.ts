@@ -11,6 +11,7 @@ export interface Account {
   expires_soon: boolean
   avatar_url: string | null
   hides_adult: boolean
+  skip_adult: boolean
 }
 
 export interface Me {
@@ -19,6 +20,7 @@ export interface Me {
   avatar_url: string | null
   avatar_provider: string | null
   theme: 'system' | 'light' | 'dark'
+  show_adult_covers: boolean
   master_account_id: number | null
   role: string
   permissions: string[]
@@ -64,6 +66,7 @@ export interface MirrorResult {
   changes?: Change[]
   errors?: string[]
   skipped?: number
+  adult_skipped?: number
   skipped_reason?: string
   error?: string
   reauth_required?: boolean
@@ -94,6 +97,7 @@ export interface ListEntry {
   title: string
   total_episodes: number | null
   image_url: string | null
+  adult: boolean
 }
 
 export interface EntryInput {

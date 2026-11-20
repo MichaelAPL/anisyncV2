@@ -126,6 +126,13 @@ function SyncOptions({ me, name }: { me: Me; name: (id: string) => string }) {
             <span className="body-l">Keep {name(a.provider)} in sync</span>
             <input type="checkbox" role="switch" className="switch" checked={a.sync_enabled} disabled={patch.isPending} onChange={(e) => patch.mutate({ id: a.id, sync_enabled: e.target.checked })} />
           </label>
+          <label className="toggle-row" style={{ justifyContent: 'space-between', borderTop: '1px solid var(--outline-variant)' }}>
+            <span style={{ display: 'flex', flexDirection: 'column' }}>
+              <span className="body-l">Don't copy adult titles to {name(a.provider)}</span>
+              <span className="body-m muted">Adult titles are left out. Ones already on {name(a.provider)} are not removed</span>
+            </span>
+            <input type="checkbox" role="switch" className="switch" checked={a.skip_adult} disabled={patch.isPending} onChange={(e) => patch.mutate({ id: a.id, skip_adult: e.target.checked })} />
+          </label>
           <label className="toggle-row" style={{ justifyContent: 'space-between', padding: '8px 0' }}>
             <span style={{ display: 'flex', flexDirection: 'column' }}>
               <span className="body-l">Remove titles not on master from {name(a.provider)}</span>
@@ -141,7 +148,7 @@ function SyncOptions({ me, name }: { me: Me; name: (id: string) => string }) {
   )
 }
 
-function Appearance() {
+function Appearance({ me }: { me: Me }) {
   const theme = useTheme()
   const save = useSaveProfile()
   const pick = (t: Theme) => { setTheme(t); save.mutate({ theme: t }) }
@@ -149,6 +156,14 @@ function Appearance() {
   return (
     <section className="card-out" aria-labelledby="look-h" style={{ padding: 16, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
       <div style={{ flex: '1 1 260px' }}><h2 id="look-h" className="title-l">Appearance</h2><p className="body-m muted">Saved to your account, so it follows you to every device. The moon/sun button at the top switches it too.</p></div>
+      <label className="toggle-row" style={{ flexBasis: '100%', justifyContent: 'space-between' }}>
+        <span style={{ display: 'flex', flexDirection: 'column' }}>
+          <span className="body-l">Show covers of adult titles</span>
+          <span className="body-m muted">Off: they are blurred in My list and marked 18+</span>
+        </span>
+        <input type="checkbox" role="switch" className="switch" checked={me.show_adult_covers} disabled={save.isPending}
+          onChange={(e) => save.mutate({ show_adult_covers: e.target.checked })} />
+      </label>
       <div className="seg" role="group" aria-label="Theme">
         {opts.map(([v, l]) => <button key={v} type="button" aria-pressed={theme === v} onClick={() => pick(v)}>{l}</button>)}
       </div>
@@ -232,7 +247,7 @@ export function Settings() {
           <div className="list">{me.accounts.map((a) => <AccountRow key={a.id} a={a} me={me} name={name} />)}</div>
         </section>
         <SyncOptions me={me} name={name} />
-        <Appearance />
+        <Appearance me={me} />
         <Sessions />
         <DeleteAccount />
       </main>

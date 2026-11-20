@@ -101,7 +101,7 @@ class KitsuClient(ProviderClient):
             "filter[userId]": self.remote_user_id,
             "filter[kind]": "anime",
             "include": "anime,anime.mappings",
-            "fields[anime]": "canonicalTitle,episodeCount,posterImage,mappings",
+            "fields[anime]": "canonicalTitle,episodeCount,posterImage,mappings,nsfw",
             "fields[mappings]": "externalSite,externalId",
             "page[limit]": 500,
         }
@@ -124,6 +124,7 @@ class KitsuClient(ProviderClient):
                         title=anime["attributes"].get("canonicalTitle", ""),
                         total_episodes=anime["attributes"].get("episodeCount"),
                         image_url=(anime["attributes"].get("posterImage") or {}).get("small"),
+                        adult=bool(anime["attributes"].get("nsfw")),
                         status=TO_STATUS[attrs["status"]],
                         progress=attrs.get("progress") or 0,
                         score=rating * 5 if rating else None,

@@ -110,7 +110,7 @@ async def test_the_list_response_has_no_provider_internals(client, session, fake
         [entry] = (await c.get("/api/list")).json()
     assert set(entry) == {
         "media_id", "status", "progress", "score", "rewatching", "started_at", "finished_at", "updated_at",
-        "title", "total_episodes", "image_url", "external_ids",
+        "title", "total_episodes", "image_url", "adult", "external_ids",
     }  # fmt: skip
 
 

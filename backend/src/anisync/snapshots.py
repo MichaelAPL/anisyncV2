@@ -47,6 +47,7 @@ def row_to_entry(row: ListSnapshot) -> ListEntry:
         title=row.title,
         total_episodes=row.total_episodes,
         image_url=row.image_url,
+        adult=row.adult,
         external_ids=dict(row.external_ids or {}),
         remote_entry_id=row.remote_entry_id,
     )
@@ -68,6 +69,7 @@ def _values(account_id: int, entry: ListEntry, score_step: int) -> dict:
         "title": entry.title,
         "total_episodes": entry.total_episodes,
         "image_url": entry.image_url,
+        "adult": entry.adult,
         "external_ids": entry.external_ids,
     }
 

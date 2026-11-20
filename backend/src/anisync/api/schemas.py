@@ -31,6 +31,7 @@ class ListEntryOut(BaseModel):
     title: str
     total_episodes: int | None
     image_url: str | None
+    adult: bool  # the provider marks it adult: the UI blurs the cover unless the user chose to see them
     external_ids: dict[str, str]
 
 
@@ -70,6 +71,7 @@ class MirrorResultOut(BaseModel):
     changes: list[ChangeOut] | None = None  # previews only
     errors: list[str] | None = None  # applied syncs only
     skipped: int | None = None  # changes the provider hides from us (not failures), see `skipped_reason`
+    adult_skipped: int | None = None  # adult titles left out because this mirror's "skip adult titles" is on
     skipped_reason: str | None = None
     error: str | None = None
     reauth_required: bool | None = None

@@ -24,6 +24,7 @@ class Change:
 class Plan:
     changes: list[Change] = field(default_factory=list)
     unmapped: list[ListEntry] = field(default_factory=list)  # master entries with no ID on the mirror
+    adult_skipped: int = 0  # adult master entries left out because the mirror asked for that
 
     def counts(self) -> dict[str, int]:
         out = {"create": 0, "update": 0, "delete": 0}
@@ -57,6 +58,7 @@ def plan_sync(
     id_map: dict[str, str | None],
     score_step: int,
     prune_missing: bool = False,
+    skip_adult: bool = False,
 ) -> Plan:
     """id_map: master media_id -> mirror media_id (None = the title has no ID on the mirror's provider)."""
     plan = Plan()
@@ -65,6 +67,12 @@ def plan_sync(
 
     for entry in master:
         target_id = id_map.get(entry.media_id)
+        if skip_adult and entry.adult:
+            # Not copied, but never a reason to delete the mirror's own copy.
+            plan.adult_skipped += 1
+            if target_id is not None:
+                wanted.add(target_id)
+            continue
         if target_id is None:
             plan.unmapped.append(entry)
             continue

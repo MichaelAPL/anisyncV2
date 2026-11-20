@@ -42,6 +42,8 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(String(500))
     avatar_provider: Mapped[str | None] = mapped_column(String(32))
     theme: Mapped[str] = mapped_column(String(10), default="system", server_default="system")  # system | light | dark
+    # Covers of adult titles are blurred in the app unless the user chooses to see them.
+    show_adult_covers: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     accounts: Mapped[list["LinkedAccount"]] = relationship(
         back_populates="user", foreign_keys="LinkedAccount.user_id", cascade="all, delete-orphan", lazy="selectin"
@@ -91,6 +93,8 @@ class LinkedAccount(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The account's own setting hides adult titles from other apps, so what we read is incomplete (Provider.adult_help).
     hides_adult: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Mirror setting: leave adult titles out of the sync (never removes them; only stops creating and updating them).
+    skip_adult: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Mirror-only settings.
     sync_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     # Remove entries from this mirror that are not on the master list.
@@ -210,6 +214,7 @@ class ListSnapshot(Base):
     title: Mapped[str] = mapped_column(Text, default="")
     total_episodes: Mapped[int | None] = mapped_column(Integer)
     image_url: Mapped[str | None] = mapped_column(Text)
+    adult: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # the provider marks it adult
     external_ids: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

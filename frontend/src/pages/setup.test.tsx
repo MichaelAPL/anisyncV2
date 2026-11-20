@@ -64,6 +64,13 @@ describe('choose master', () => {
     expect(calls.find((c) => c.path === '/api/me/master')?.body).toEqual({ account_id: 2 })
     await waitFor(() => expect(radios[1]).toBeChecked())
   })
+
+  it('offers to leave adult titles out of a mirror', async () => {
+    const calls = stubApi({ 'PATCH /api/accounts/2': makeMe() })
+    renderRoute('/master')
+    await userEvent.setup().click(await screen.findByRole('switch', { name: /don't copy adult titles/i }))
+    await waitFor(() => expect(calls.find((c) => c.path === '/api/accounts/2')?.body).toMatchObject({ skip_adult: true }))
+  })
 })
 
 const preview: Record<string, MirrorResult> = {
@@ -111,6 +118,12 @@ describe('review first sync', () => {
     expect(await screen.findByText('mal rejected the access token')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /apply/i })).toBeDisabled()
+  })
+
+  it('says how many adult titles are not copied because the user chose that', async () => {
+    stubApi({ 'GET /api/sync/preview': { mal: { ...preview.mal, adult_skipped: 3 } } })
+    renderRoute('/review')
+    expect(await screen.findByText(/3 adult titles are not copied to myanimelist, as you chose/i)).toBeInTheDocument()
   })
 
   it('does not offer to apply while a mirror reports an error', async () => {

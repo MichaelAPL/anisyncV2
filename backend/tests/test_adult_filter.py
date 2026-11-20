@@ -17,6 +17,7 @@ from tests.test_sync import make_user, put, remote
 from tests.test_sync_snapshots import title
 
 HELP = "Open Settings → Adult Content"
+usesfakes = pytest.mark.usefixtures("fakes", "client")
 
 
 @pytest.fixture
@@ -63,25 +64,52 @@ async def test_me_tells_the_ui_which_accounts_hide_adult_titles(session):
     assert flags[accounts[first].provider] is True and list(flags.values()).count(False) == len(flags) - 1
 
 
-async def test_a_manual_sync_looks_again_so_turning_the_setting_off_takes_effect(session, filtered):
+async def test_the_setting_is_read_with_full_reads_and_not_spent_on_every_sync(session, filtered):
     user = await make_user(session)
     put("fa", title(1))
     FakeClient.HIDES_ADULT = {"fb"}
-    await sync.run_sync(session, user.id, "manual")
+    await sync.run_sync(session, user.id, "manual")  # the first sync reads everything in full
     assert (await account(session, user, "fb")).hides_adult is True
     FakeClient.HIDES_ADULT = set()
-    await sync.run_sync(session, user.id, "scheduled")  # a scheduled sync doesn't spend a request on it
+    await sync.run_sync(session, user.id, "manual")  # no full read: no extra request, so the old answer stays
+    await sync.run_sync(session, user.id, "preview", dry_run=True)
     assert (await account(session, user, "fb")).hides_adult is True
-    await sync.run_sync(session, user.id, "manual")
+    await sync.run_sync(session, user.id, "manual", full=True)  # a full read looks again
     assert (await account(session, user, "fb")).hides_adult is False
 
 
-async def test_a_preview_also_looks_again(session, filtered):
-    user = await make_user(session)
-    put("fa", title(1))
-    FakeClient.HIDES_ADULT = {"fb"}
-    await sync.run_sync(session, user.id, "preview", dry_run=True)
-    assert (await account(session, user, "fb")).hides_adult is True
+@usesfakes
+async def test_i_changed_the_setting_looks_at_the_account_once_and_reports_the_result(session, filtered):
+    user, accounts, token = await make_web_user(session, "recheck")
+    mirror = accounts["fb"]
+    mirror.hides_adult = True
+    await session.flush()
+    async with browser(token) as c:
+        still = await c.post(f"/api/accounts/{mirror.id}/recheck-adult")
+        FakeClient.HIDES_ADULT = {"fb"}
+        assert {a["provider"]: a["hides_adult"] for a in still.json()["accounts"]}["fb"] is False  # the user changed it
+        again = await c.post(f"/api/accounts/{mirror.id}/recheck-adult")
+        assert {a["provider"]: a["hides_adult"] for a in again.json()["accounts"]}["fb"] is True  # still hidden
+
+
+@usesfakes
+async def test_recheck_is_only_for_providers_with_the_setting_and_only_for_your_own_accounts(session, filtered):
+    _, accounts, token = await make_web_user(session, "rc2")
+    _, others, _ = await make_web_user(session, "rc3")
+    async with browser(token) as c:
+        assert (await c.post(f"/api/accounts/{accounts['fa'].id}/recheck-adult")).status_code == 400
+        assert (await c.post(f"/api/accounts/{others['fb'].id}/recheck-adult")).status_code in (403, 404)
+    async with browser("") as anon:
+        assert (await anon.post(f"/api/accounts/{accounts['fb'].id}/recheck-adult")).status_code == 401
+
+
+@usesfakes
+async def test_rechecking_is_rate_limited(session, filtered):
+    _, accounts, token = await make_web_user(session, "rc4")
+    path = f"/api/accounts/{accounts['fb'].id}/recheck-adult"
+    async with browser(token) as c:
+        codes = [(await c.post(path)).status_code for _ in range(12)]
+    assert codes[:10] == [200] * 10 and codes[10:] == [429, 429]
 
 
 async def test_a_provider_without_the_setting_costs_no_extra_request(session, fakes):

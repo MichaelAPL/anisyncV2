@@ -35,8 +35,11 @@ export const useSetMaster = () =>
   useMeMutation((accountId: number) => api<Me>('/api/me/master', { method: 'PUT', json: { account_id: accountId } }))
 
 export const usePatchAccount = () =>
-  useMeMutation((v: { id: number; sync_enabled?: boolean; prune_missing?: boolean }) =>
-    api<Me>(`/api/accounts/${v.id}`, { method: 'PATCH', json: { sync_enabled: v.sync_enabled, prune_missing: v.prune_missing } }),
+  useMeMutation((v: { id: number; sync_enabled?: boolean; prune_missing?: boolean; skip_adult?: boolean }) =>
+    api<Me>(`/api/accounts/${v.id}`, {
+      method: 'PATCH',
+      json: { sync_enabled: v.sync_enabled, prune_missing: v.prune_missing, skip_adult: v.skip_adult },
+    }),
   )
 
 export function useLinkWithPassword() {
@@ -103,7 +106,11 @@ export function useRefreshList() {
 
 export const useSessions = () => useQuery({ queryKey: ['sessions'], queryFn: () => api<SessionInfo[]>('/api/sessions') })
 
-export const useSaveProfile = () => useMeMutation((v: { display_name?: string; theme?: Me['theme'] }) => api<Me>('/api/me', { method: 'PATCH', json: v }))
+export const useSaveProfile = () =>
+  useMeMutation((v: { display_name?: string; theme?: Me['theme']; show_adult_covers?: boolean }) =>
+    api<Me>('/api/me', { method: 'PATCH', json: v }),
+  )
+export const useRecheckAdult = () => useMeMutation((id: number) => api<Me>(`/api/accounts/${id}/recheck-adult`, { method: 'POST' }))
 export const useUseAvatar = () => useMeMutation((accountId: number) => api<Me>('/api/me/avatar', { method: 'PUT', json: { account_id: accountId } }))
 export const useRemoveAvatar = () => useMeMutation(() => api<Me>('/api/me/avatar', { method: 'DELETE' }))
 export const useUnlink = () => useMeMutation((id: number) => api<Me>(`/api/accounts/${id}`, { method: 'DELETE' }))

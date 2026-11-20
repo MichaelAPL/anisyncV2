@@ -66,6 +66,9 @@ function Mirror({ result, prune, name }: { result: MirrorResult; prune: boolean;
           </div>
         )}
       </section>
+      {!!result.adult_skipped && (
+        <p className="body-m muted">{result.adult_skipped} adult {result.adult_skipped === 1 ? 'title is' : 'titles are'} not copied to {name}, as you chose.</p>
+      )}
       {result.unmapped > 0 && (
         <details className="card" style={{ padding: '16px 20px' }}>
           <summary className="title-s" style={{ cursor: 'pointer', minHeight: 28 }}>

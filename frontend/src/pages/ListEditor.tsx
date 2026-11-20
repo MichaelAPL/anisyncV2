@@ -52,7 +52,7 @@ function EntryForm({ entry, masterName, onClose, onSaved, onRemoved }: {
       save.mutate({ mediaId: entry.media_id, entry: { ...f, score: num || null } }, { onSuccess: (r) => onSaved(toInput(entry), r.queued_mirrors) })
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <Cover title={entry.title} url={entry.image_url} w={56} h={80} />
+        <Cover title={entry.title} url={entry.image_url} w={56} h={80} adult={entry.adult} />
         <div style={{ flex: 1, minWidth: 0 }}><p className="label-m muted">EDITING</p><h2 id="sheet-h" className="title-l">{entry.title}</h2></div>
         <button type="button" className="icon-btn" aria-label="Close editor" onClick={onClose}><Icon name="close" size={20} /></button>
       </div>
@@ -174,7 +174,7 @@ export function ListEditor() {
                   {visible.slice(0, shown).map((e) => (
                     <button key={e.media_id} type="button" className={`list-item list-link${e.media_id === selected ? ' list-selected' : ''}`}
                       aria-current={e.media_id === selected || undefined} onClick={() => setSelected(e.media_id)} style={{ width: '100%', textAlign: 'left', font: 'inherit', border: 'none' }}>
-                      <Cover title={e.title} url={e.image_url} />
+                      <Cover title={e.title} url={e.image_url} adult={e.adult} />
                       <span className="list-text"><span className="title-m">{e.title}</span><span className="body-m muted">{detail(e)}</span></span>
                       <Icon name="chevron-right" size={20} />
                     </button>

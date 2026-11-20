@@ -56,6 +56,7 @@ class ListEntry:
     title: str = ""
     total_episodes: int | None = None
     image_url: str | None = None
+    adult: bool = False  # the provider marks the title as adult (explicit)
     # {provider id: that provider's ID for this title}. Includes the entry's own provider, plus whatever the
     # provider tells us about other providers (e.g. a cross-reference field).
     external_ids: dict[str, str] = field(default_factory=dict)

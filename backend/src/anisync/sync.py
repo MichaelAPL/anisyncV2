@@ -101,7 +101,9 @@ async def plan_for_mirror(
     await session.commit()
     # A master that hides adult titles from us looks shorter than it is: never treat that as "removed from master".
     prune = mirror.prune_missing and not master.hides_adult
-    return plan_sync(master_entries, mirror_entries, id_map, get_provider(mirror.provider).score_step, prune)
+    return plan_sync(
+        master_entries, mirror_entries, id_map, get_provider(mirror.provider).score_step, prune, mirror.skip_adult
+    )
 
 
 @dataclass
@@ -289,9 +291,7 @@ async def _sync_mirrors(
     summary: dict = {}
     master_client = await client_for(master, session)
     master_read = await refresh_snapshot(session, master, master_client, is_master=True, full=full)
-    # Someone looking at a preview or pressing "Sync now" has probably just changed a setting: look again right away.
-    recheck = run is None or run.trigger == "manual"
-    if recheck or master_read.mode == "full":
+    if master_read.mode == "full":  # weekly; in between, the user can say "I changed it" (POST .../recheck-adult)
         await check_adult_filter(master, master_client)
     master_entries = await snapshots.load(session, master.id)
     log.info("sync user %s: master read %s (%s received)", user.id, master_read.mode, len(master_read.received))
@@ -308,13 +308,15 @@ async def _sync_mirrors(
         try:
             client = await client_for(mirror, session)
             read = await refresh_snapshot(session, mirror, client, is_master=False, full=full)
-            if recheck or read.mode == "full":
+            if read.mode == "full":
                 await check_adult_filter(mirror, client)
             mirror_entries = await snapshots.load(session, mirror.id)
             plan = await plan_for_mirror(
                 session, master, master_entries, mirror, mirror_entries, master_read.received + read.received
             )
             result: dict = plan.counts() | {"unmapped_titles": [e.title for e in plan.unmapped][:50], "read": read.mode}
+            if plan.adult_skipped:
+                result["adult_skipped"] = plan.adult_skipped
             if read.mode == "full":
                 result["drifted"] = read.drifted
                 if read.drifted:
@@ -380,6 +382,8 @@ async def push_entry(
     if account.provider in await switches.paused_providers(session):
         log.info("%s is paused; not pushing %s (the next sync catches up)", account.provider, master_media_id)
         return
+    if entry is not None and entry.adult and account.skip_adult:
+        return  # this mirror was asked to leave adult titles out
     async with IdMapper(session) as mapper:
         if entry is not None:
             await mapper.learn_from([entry])

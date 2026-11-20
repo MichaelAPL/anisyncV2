@@ -41,6 +41,7 @@ class AccountOut(BaseModel):
     expires_soon: bool  # it can't be renewed and expires within 30 days (the UI warns before it does)
     avatar_url: str | None  # this account's picture as last seen, for the "use this picture" choice
     hides_adult: bool  # the account hides adult titles from other apps: tell the user (see ProviderOut.adult_help)
+    skip_adult: bool  # mirror setting: adult titles are left out of the sync
 
 
 class MeOut(BaseModel):
@@ -49,6 +50,7 @@ class MeOut(BaseModel):
     avatar_url: str | None  # None: the UI shows the initials of the name
     avatar_provider: str | None  # which provider the picture came from
     theme: Literal["system", "light", "dark"]
+    show_adult_covers: bool  # false: covers of adult titles are blurred
     master_account_id: int | None
     role: str
     permissions: list[str]  # what the UI may show; the server enforces it on every request
@@ -63,6 +65,7 @@ def _me(user: User) -> MeOut:
         avatar_url=user.avatar_url,
         avatar_provider=user.avatar_provider,
         theme=user.theme,  # type: ignore[arg-type]
+        show_adult_covers=user.show_adult_covers,
         master_account_id=user.master_account_id,
         role=user.role,
         permissions=sorted(user.permissions),
@@ -81,6 +84,7 @@ def _me(user: User) -> MeOut:
                 expires_soon=a.expires_soon(),
                 avatar_url=a.avatar_url,
                 hides_adult=a.hides_adult,
+                skip_adult=a.skip_adult,
             )
             for a in sorted(user.accounts, key=lambda a: a.id)
         ],
@@ -111,6 +115,7 @@ class MasterIn(BaseModel):
 class ProfileIn(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=40)
     theme: Literal["system", "light", "dark"] | None = None
+    show_adult_covers: bool | None = None
 
     @field_validator("display_name")
     @classmethod
@@ -127,12 +132,14 @@ class ProfileIn(BaseModel):
 
 @router.patch("/me", dependencies=[ratelimit.per_user("profile", limit=20, window=timedelta(hours=1))])
 async def update_profile(body: ProfileIn, user: CurrentUser, session: Session) -> MeOut:
-    if body.display_name is None and body.theme is None:
+    if body.display_name is None and body.theme is None and body.show_adult_covers is None:
         raise HTTPException(422, "Nothing to change")
     if body.display_name is not None:
         user.display_name = body.display_name
     if body.theme is not None:
         user.theme = body.theme
+    if body.show_adult_covers is not None:
+        user.show_adult_covers = body.show_adult_covers
     await session.commit()
     return _me(user)
 
@@ -201,6 +208,7 @@ async def set_master(body: MasterIn, user: CurrentUser, session: Session) -> MeO
 class AccountPatch(BaseModel):
     sync_enabled: bool | None = None
     prune_missing: bool | None = None
+    skip_adult: bool | None = None
 
 
 @router.patch("/accounts/{account_id}")
@@ -208,6 +216,24 @@ async def update_account(account_id: int, body: AccountPatch, user: CurrentUser,
     account = _account(user, account_id)
     for key, value in body.model_dump(exclude_none=True).items():
         setattr(account, key, value)
+    await session.commit()
+    return _me(user)
+
+
+@router.post(
+    "/accounts/{account_id}/recheck-adult",
+    dependencies=[ratelimit.per_user("adult-recheck", limit=10, window=timedelta(hours=1))],
+)
+async def recheck_adult(account_id: int, user: CurrentUser, session: Session) -> MeOut:
+    """ "I changed the adult-content setting on the provider": look at the account again (one request)."""
+    account = _account(user, account_id)
+    provider = get_provider(account.provider)
+    if provider.adult_help is None:
+        raise HTTPException(400, f"{provider.name} has no adult-content setting that affects AniSync")
+    try:
+        await sync.check_adult_filter(account, await sync.client_for(account, session))
+    except ReauthRequired as exc:
+        raise HTTPException(409, str(exc)) from exc
     await session.commit()
     return _me(user)
 

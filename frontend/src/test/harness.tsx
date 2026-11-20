@@ -15,11 +15,11 @@ export const SITE: Site = { maintenance: false, maintenance_message: null, banne
 
 export const account = (id: number, provider: string, over: Partial<Account> = {}): Account => ({
   id, provider, remote_username: `${provider}-user`, is_master: false, sync_enabled: true, prune_missing: false, last_synced_at: null,
-  expires_at: null, needs_relink: false, expires_soon: false, avatar_url: null, hides_adult: false, ...over,
+  expires_at: null, needs_relink: false, expires_soon: false, avatar_url: null, hides_adult: false, skip_adult: false, ...over,
 })
 
 export const makeMe = (over: Partial<Me> = {}): Me => ({
-  id: 1, display_name: 'Kaito', avatar_url: null, avatar_provider: null, theme: 'system', master_account_id: 1, role: 'user', permissions: [],
+  id: 1, display_name: 'Kaito', avatar_url: null, avatar_provider: null, theme: 'system', show_adult_covers: false, master_account_id: 1, role: 'user', permissions: [],
   next_sync_at: null, accounts: [account(1, 'anilist', { is_master: true }), account(2, 'mal')], ...over,
 })
 

@@ -82,6 +82,32 @@ describe('dashboard', () => {
     expect(await screen.findByRole('note')).toHaveTextContent(/never remove anything from your other lists/i)
   })
 
+  it('lets the user say they changed the provider setting, checks once and reports the answer', async () => {
+    const hidden = makeMe({ accounts: [account(1, 'anilist', { is_master: true }), account(3, 'kitsu', { hides_adult: true })] })
+    const calls = stubApi({ 'GET /api/sync/runs': [], 'POST /api/accounts/3/recheck-adult': hidden }, { me: hidden })
+    renderRoute('/dashboard')
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: /i've changed it, check again/i }))
+    expect(await screen.findByText(/still hidden/i)).toBeInTheDocument()
+    expect(calls.filter((c) => c.path === '/api/accounts/3/recheck-adult')).toHaveLength(1) // one request, not a poll
+  })
+
+  it('removes the notice once the provider no longer hides adult titles', async () => {
+    const hidden = makeMe({ accounts: [account(1, 'anilist', { is_master: true }), account(3, 'kitsu', { hides_adult: true })] })
+    const fixed = makeMe({ accounts: [account(1, 'anilist', { is_master: true }), account(3, 'kitsu', { hides_adult: false })] })
+    stubApi({ 'GET /api/sync/runs': [], 'POST /api/accounts/3/recheck-adult': fixed }, { me: hidden })
+    renderRoute('/dashboard')
+    await userEvent.setup().click(await screen.findByRole('button', { name: /i've changed it, check again/i }))
+    await waitFor(() => expect(screen.queryByRole('note')).toBeNull())
+  })
+
+  it('says how many adult titles were left out of a mirror as the user chose', async () => {
+    const runs = [{ id: 1, trigger: 'manual', status: 'ok', started_at: new Date().toISOString(), finished_at: new Date().toISOString(), planned: 0, processed: 0, summary: { mal: { provider: 'mal', username: 'u', create: 0, update: 0, delete: 0, unmapped: 0, unmapped_titles: [], errors: [], adult_skipped: 12 } } }]
+    stubApi({ 'GET /api/sync/runs': runs })
+    renderRoute('/dashboard')
+    expect(await screen.findByText(/12 adult titles are not copied, as you chose/)).toBeInTheDocument()
+  })
+
   it('shows no adult-content notice when nothing is hidden', async () => {
     stubApi({ 'GET /api/sync/runs': [] })
     renderRoute('/dashboard')
@@ -123,7 +149,7 @@ describe('dashboard', () => {
 
 const entry = (id: string, title: string, over: Partial<ListEntry> = {}): ListEntry => ({
   media_id: id, status: 'watching', progress: 3, score: 80, rewatching: false, started_at: null, finished_at: null, updated_at: null,
-  title, total_episodes: 12, image_url: null, ...over,
+  title, total_episodes: 12, image_url: null, adult: false, ...over,
 })
 const ENTRIES = [entry('1', 'Frieren'), entry('2', 'Dandadan', { status: 'completed', score: null }), entry('3', 'Bocchi the Rock!', { status: 'on_hold' })]
 
@@ -164,6 +190,28 @@ describe('my list', () => {
     await user.click(screen.getByRole('button', { name: /undo/i }))
     await waitFor(() => expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(2))
     expect(calls.filter((c) => c.method === 'PUT')[1].body).toMatchObject({ status: 'watching', progress: 3, score: 80 })
+  })
+
+  it('blurs the covers of adult titles and marks them 18+, until the user chooses to see them', async () => {
+    const adultList = [entry('1', 'Safe Show', { image_url: 'https://s4.anilist.co/a.jpg' }), entry('2', 'Adult Show', { adult: true, image_url: 'https://s4.anilist.co/b.jpg' })]
+    stubApi({ 'GET /api/list': adultList })
+    renderRoute('/list')
+    await screen.findByText('Adult Show')
+    const hidden = screen.getByRole('img', { name: /cover hidden: adult title/i })
+    expect(hidden).toHaveTextContent('18+')
+    expect(hidden.querySelector('img')).toHaveStyle({ filter: 'blur(10px) brightness(.8)' })
+    const safe = screen.getByRole('img', { name: /cover: safe show/i })
+    expect(safe.querySelector('img')).not.toHaveStyle({ filter: 'blur(10px) brightness(.8)' })
+    expect(safe).not.toHaveTextContent('18+')
+  })
+
+  it('shows adult covers when the user turned that on', async () => {
+    const adultList = [entry('2', 'Adult Show', { adult: true, image_url: 'https://s4.anilist.co/b.jpg' })]
+    stubApi({ 'GET /api/list': adultList }, { me: makeMe({ show_adult_covers: true }) })
+    renderRoute('/list')
+    await screen.findByText('Adult Show')
+    expect(screen.getByRole('img', { name: /cover: adult show/i })).not.toHaveTextContent('18+')
+    expect(screen.queryByRole('img', { name: /cover hidden/i })).toBeNull()
   })
 
   it('rejects a score above 10 before sending anything', async () => {
@@ -217,6 +265,20 @@ describe('settings', () => {
     await user.type(name, 'Kaito the Great')
     await user.click(screen.getByRole('button', { name: /save name/i }))
     await waitFor(() => expect(calls.find((c) => c.method === 'PATCH')?.body).toEqual({ display_name: 'Kaito the Great' }))
+  })
+
+  it('saves the choice to show adult covers', async () => {
+    const calls = stubApi({ 'GET /api/sessions': sessions, 'PATCH /api/me': makeMe({ show_adult_covers: true }) })
+    renderRoute('/settings')
+    await userEvent.setup().click(await screen.findByRole('switch', { name: /show covers of adult titles/i }))
+    await waitFor(() => expect(calls.find((c) => c.method === 'PATCH' && c.path === '/api/me')?.body).toEqual({ show_adult_covers: true }))
+  })
+
+  it('saves the per-mirror choice to leave adult titles out', async () => {
+    const calls = stubApi({ 'GET /api/sessions': sessions, 'PATCH /api/accounts/2': makeMe() })
+    renderRoute('/settings')
+    await userEvent.setup().click(await screen.findByRole('switch', { name: /don't copy adult titles to myanimelist/i }))
+    await waitFor(() => expect(calls.find((c) => c.path === '/api/accounts/2')?.body).toMatchObject({ skip_adult: true }))
   })
 
   it('saves the theme to the account and applies it', async () => {

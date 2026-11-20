@@ -28,6 +28,11 @@ function MirrorRow({ account, name }: { account: Account; name: string }) {
           onChange={(e) => patch.mutate({ id: account.id, prune_missing: e.target.checked })} />
         Remove titles not on master
       </label>
+      <label className="toggle-row body-m" style={{ gap: 12 }}>
+        <input type="checkbox" role="switch" className="switch" checked={account.skip_adult} disabled={patch.isPending}
+          onChange={(e) => patch.mutate({ id: account.id, skip_adult: e.target.checked })} />
+        Don't copy adult titles
+      </label>
     </div>
   )
 }

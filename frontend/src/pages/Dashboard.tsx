@@ -125,6 +125,9 @@ export function Dashboard() {
                     <div><dt className="body-s muted">Unmatched titles</dt><dd className="title-s" style={{ margin: 0 }}>{r?.unmapped ?? '–'}</dd></div>
                   </dl>
                   <AdultNotice account={a} />
+                  {!!r?.adult_skipped && (
+                    <p className="body-m muted">{r.adult_skipped} adult {r.adult_skipped === 1 ? 'title is' : 'titles are'} not copied, as you chose.</p>
+                  )}
                   {!!r?.skipped && (
                     <p className="body-m muted" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                       <Icon name="info" size={18} style={{ flex: 'none', marginTop: 1 }} />

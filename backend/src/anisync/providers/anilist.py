@@ -53,7 +53,7 @@ query ($userId: Int) {
         score(format: POINT_100)
         startedAt { year month day }
         completedAt { year month day }
-        media { idMal episodes title { userPreferred } coverImage { medium } }
+        media { idMal episodes isAdult title { userPreferred } coverImage { medium } }
       }
     }
   }
@@ -78,7 +78,7 @@ query ($userId: Int, $page: Int) {
       score(format: POINT_100)
       startedAt { year month day }
       completedAt { year month day }
-      media { idMal episodes title { userPreferred } coverImage { medium } }
+      media { idMal episodes isAdult title { userPreferred } coverImage { medium } }
     }
   }
 }
@@ -178,6 +178,7 @@ class AniListClient(ProviderClient):
             title=media["title"]["userPreferred"],
             total_episodes=media.get("episodes"),
             image_url=(media.get("coverImage") or {}).get("medium"),
+            adult=bool(media.get("isAdult")),
             status=TO_STATUS[e["status"]],
             rewatching=e["status"] == "REPEATING",
             progress=e.get("progress") or 0,
