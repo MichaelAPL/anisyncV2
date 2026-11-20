@@ -37,3 +37,24 @@ main { flex: 1 0 auto; }
 /* List rows that are buttons (My list): look like the design's rows, not like default buttons. */
 button.list-item { width: 100%; text-align: left; font: inherit; border: 0; background: transparent; cursor: pointer; }
 button.list-item.list-selected { background: var(--secondary-container); }
+
+/* Landing hero. The overlays are made of the surface colour, so on a light surface the same percentages that look
+   rich in dark mode wash the posters out: light mode gets a lighter veil and a less milky card. */
+.as { --wall-left: 88%; --wall-mid: 46%; --wall-right: 28%; --hero-card: 80%; }
+.as.theme-dark { --wall-left: 94%; --wall-mid: 72%; --wall-right: 55%; --hero-card: 88%; }
+@media (prefers-color-scheme: dark) {
+  .as.theme-auto { --wall-left: 94%; --wall-mid: 72%; --wall-right: 55%; --hero-card: 88%; }
+}
+.wall-scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--surface) var(--wall-left), transparent) 0%,
+    color-mix(in srgb, var(--surface) var(--wall-mid), transparent) 55%,
+    color-mix(in srgb, var(--surface) var(--wall-right), transparent) 100%);
+}
+.hero-card {
+  background: color-mix(in srgb, var(--surface) var(--hero-card), transparent);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--outline-variant);
+  box-shadow: var(--elev-2);
+}

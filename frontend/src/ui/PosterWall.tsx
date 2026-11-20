@@ -43,15 +43,8 @@ export function PosterWall() {
       <div aria-hidden="true" style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', gap: 14, overflow: 'hidden' }}>
         {Array.from({ length: COLUMNS }, (_, c) => <Column key={c} index={c} />)}
       </div>
-      {/* Surface-coloured scrim keeps the card readable in light and dark. */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute', inset: 0,
-          background:
-            'linear-gradient(90deg, color-mix(in srgb, var(--surface) 94%, transparent) 0%, color-mix(in srgb, var(--surface) 72%, transparent) 55%, color-mix(in srgb, var(--surface) 55%, transparent) 100%)',
-        }}
-      />
+      {/* Surface-coloured scrim keeps the card readable in light and dark (strength per theme: index.css). */}
+      <div aria-hidden="true" className="wall-scrim" />
       <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 120, background: 'linear-gradient(transparent, var(--surface))' }} />
     </>
   )

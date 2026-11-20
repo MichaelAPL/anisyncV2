@@ -33,13 +33,7 @@ export function Landing() {
         <section style={{ position: 'relative', overflow: 'hidden', minHeight: 680, display: 'flex', alignItems: 'center' }}>
           <PosterWall />
           <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 1200, margin: '0 auto', padding: '32px 24px 80px' }}>
-            <div
-              style={{
-                maxWidth: 580, padding: 32, borderRadius: 28, display: 'flex', flexDirection: 'column', gap: 24,
-                background: 'color-mix(in srgb, var(--surface) 88%, transparent)', backdropFilter: 'blur(14px)',
-                border: '1px solid var(--outline-variant)',
-              }}
-            >
+            <div className="hero-card" style={{ maxWidth: 580, padding: 32, borderRadius: 28, display: 'flex', flexDirection: 'column', gap: 24 }}>
               <div className="chip-row">
                 {list.map((p) => (
                   <span key={p.id} className="tag tag-neutral" style={{ gap: 8, paddingLeft: 4 }}>
