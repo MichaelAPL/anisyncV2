@@ -321,8 +321,9 @@ class ProviderClient(abc.ABC):
         entries one identical timestamp, and re-reading them all on every sync would defeat the point."""
 
     @abc.abstractmethod
-    async def save_entry(self, entry: ListEntry) -> None:
-        """Create or update the list entry for entry.media_id."""
+    async def save_entry(self, entry: ListEntry) -> str | None:
+        """Create or update the list entry for entry.media_id. Returns the provider's own list-entry id when the write
+        revealed one (so the next change to this entry can go straight to it), else None."""
 
     @abc.abstractmethod
     async def delete_entry(self, media_id: str, remote_entry_id: str | None = None) -> None:

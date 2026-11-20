@@ -231,3 +231,97 @@ async def test_errors_that_are_not_network_hiccups_are_not_retried(no_real_waiti
     with pytest.raises(httpx.UnsupportedProtocol):
         await mal.MalClient("tok").fetch_list()
     assert route.call_count == 1 and no_real_waiting == []
+
+
+# ---- Kitsu at scale: small pages, shrinking pages, cheap creates -----------------------------------------------
+
+
+def _kitsu_page(first: int, count: int, more: bool) -> httpx.Response:
+    data = [
+        {
+            "id": f"e{i}",
+            "attributes": {"status": "completed", "progress": 1},
+            "relationships": {"anime": {"data": {"id": str(i)}}},
+        }
+        for i in range(first, first + count)
+    ]
+    included = [
+        {"type": "anime", "id": str(i), "attributes": {"canonicalTitle": f"T{i}"}, "relationships": {}}
+        for i in range(first, first + count)
+    ]
+    links = {"next": "https://kitsu.app/next"} if more else {}
+    return httpx.Response(200, json={"data": data, "included": included, "links": links})
+
+
+@respx.mock
+async def test_kitsu_reads_the_list_in_small_pages_from_the_right_place(monkeypatch):
+    monkeypatch.setattr(kitsu, "PAGE_SIZE", 3)
+    route = respx.get(f"{kitsu.API}/library-entries").mock(
+        side_effect=[_kitsu_page(1, 3, True), _kitsu_page(4, 3, True), _kitsu_page(7, 1, False)]
+    )
+    entries = await kitsu.KitsuClient("tok", remote_user_id="1").fetch_list()
+    assert [e.media_id for e in entries] == [str(i) for i in range(1, 8)]
+    seen = [(c.request.url.params["page[limit]"], c.request.url.params["page[offset]"]) for c in route.calls]
+    assert seen == [("3", "0"), ("3", "3"), ("3", "6")]
+
+
+@respx.mock
+async def test_kitsu_asks_for_smaller_pages_when_one_keeps_timing_out_and_loses_nothing(monkeypatch):
+    monkeypatch.setattr(kitsu, "PAGE_SIZE", 100)
+    route = respx.get(f"{kitsu.API}/library-entries").mock(
+        side_effect=[
+            _kitsu_page(1, 100, True),  # the first page is fine
+            *[httpx.ReadTimeout("slow")] * 3,  # the second times out, even after the client's own retries...
+            _kitsu_page(101, 50, True),  # ...so it is asked again at half the size, from the same place
+            _kitsu_page(151, 10, False),
+        ]
+    )
+    entries = await kitsu.KitsuClient("tok", remote_user_id="1").fetch_list()
+    assert len(entries) == 160 and entries[100].media_id == "101"
+    seen = [(c.request.url.params["page[limit]"], c.request.url.params["page[offset]"]) for c in route.calls]
+    assert seen == [("100", "0"), ("100", "100"), ("100", "100"), ("100", "100"), ("50", "100"), ("50", "150")]
+
+
+@respx.mock
+async def test_kitsu_gives_up_when_even_the_smallest_page_times_out(monkeypatch):
+    monkeypatch.setattr(kitsu, "PAGE_SIZE", 50)
+    monkeypatch.setattr(kitsu, "MIN_PAGE_SIZE", 25)
+    route = respx.get(f"{kitsu.API}/library-entries").mock(side_effect=httpx.ReadTimeout("slow"))
+    with pytest.raises(httpx.ReadTimeout):
+        await kitsu.KitsuClient("tok", remote_user_id="1").fetch_list()
+    sizes = [c.request.url.params["page[limit]"] for c in route.calls]
+    assert sizes == ["50"] * 3 + ["25"] * 3  # each size gets the client's retries, then it shrinks once
+
+
+@respx.mock
+async def test_a_new_kitsu_entry_costs_one_request_and_its_id_is_returned():
+    post = respx.post(f"{kitsu.API}/library-entries").mock(
+        return_value=httpx.Response(201, json={"data": {"id": "entry-77"}})
+    )
+    lookup = respx.get(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(200, json={"data": []}))
+    got = await kitsu.KitsuClient("tok", remote_user_id="1").save_entry(
+        ListEntry(media_id="5", status=Status.WATCHING, progress=2)
+    )
+    assert got == "entry-77" and post.call_count == 1 and lookup.call_count == 0  # no "does it exist?" first
+
+
+@respx.mock
+async def test_a_known_kitsu_entry_is_updated_directly():
+    patch = respx.patch(f"{kitsu.API}/library-entries/entry-9").mock(return_value=httpx.Response(200, json={}))
+    post = respx.post(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(500))
+    got = await kitsu.KitsuClient("tok", remote_user_id="1").save_entry(
+        ListEntry(media_id="5", status=Status.COMPLETED, progress=12, remote_entry_id="entry-9")
+    )
+    assert got == "entry-9" and patch.call_count == 1 and post.call_count == 0
+
+
+@respx.mock
+async def test_when_kitsu_says_the_title_is_already_there_it_is_found_and_updated():
+    taken = {"errors": [{"title": "Invalid", "detail": "animeId - has already been taken", "status": "422"}]}
+    respx.post(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(422, json=taken))
+    respx.get(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(200, json={"data": [{"id": "entry-3"}]}))
+    patch = respx.patch(f"{kitsu.API}/library-entries/entry-3").mock(return_value=httpx.Response(200, json={}))
+    got = await kitsu.KitsuClient("tok", remote_user_id="1").save_entry(
+        ListEntry(media_id="5", status=Status.WATCHING, progress=2)
+    )
+    assert got == "entry-3" and patch.call_count == 1  # added on Kitsu's own site since our last look

@@ -141,15 +141,14 @@ async def _pause(seconds: float) -> None:
     await asyncio.sleep(seconds)  # a function of its own so tests can skip the wait
 
 
-async def _write(client: ProviderClient, change) -> None:
+async def _write(client: ProviderClient, change) -> str | None:
     """One change, waiting out a provider's "slow down" (up to a few times) instead of failing every change after it."""
     for attempt in range(RATE_LIMIT_RETRIES + 1):
         try:
             if change.op == "delete":
                 await client.delete_entry(change.media_id, change.current.remote_entry_id if change.current else None)
-            else:
-                await client.save_entry(change.desired)
-            return
+                return None
+            return await client.save_entry(change.desired)  # the provider's id for the entry, when it told us
         except RateLimited as exc:
             if attempt == RATE_LIMIT_RETRIES:
                 raise
@@ -188,11 +187,11 @@ async def apply_plan(
         await session.commit()
     for done, change in enumerate(plan.changes, start=1):
         try:
-            await _write(client, change)
+            learned = await _write(client, change)
             if change.op == "delete":
                 deleted.append(change.media_id)
             else:
-                written.append(change.desired)
+                written.append(replace(change.desired, remote_entry_id=learned) if learned else change.desired)
         except ReauthRequired:
             await save()
             raise
@@ -428,7 +427,8 @@ async def push_entry(
             await client.delete_entry(target_id)
             await snapshots.remove(session, account.id, [target_id])
     else:
-        written = replace(entry, media_id=target_id, remote_entry_id=None)
+        known = await snapshots.remote_entry_id(session, account.id, target_id)  # lets the provider skip a lookup
+        written = replace(entry, media_id=target_id, remote_entry_id=known)
         await client.save_entry(written)
         await snapshots.upsert(session, account.id, [written], step)
     await session.commit()

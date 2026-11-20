@@ -102,6 +102,15 @@ async def upsert(session: AsyncSession, account_id: int, entries: Iterable[ListE
         )
 
 
+async def remote_entry_id(session: AsyncSession, account_id: int, external_id: str) -> str | None:
+    """The provider's own list-entry id for a title we have seen on the account (None: not known to be on it)."""
+    return await session.scalar(
+        select(ListSnapshot.remote_entry_id).where(
+            ListSnapshot.account_id == account_id, ListSnapshot.external_id == external_id
+        )
+    )
+
+
 async def remove_adult(session: AsyncSession, account_id: int) -> int:
     """Forget the adult titles stored for the account (used when its owner chooses to ignore them)."""
     result = await session.execute(

@@ -212,3 +212,28 @@ async def test_hidden_titles_are_reported_as_skipped_with_the_reason_and_are_not
     assert run.status == "ok" and run.processed == 4
     events = [e for e in (await session.scalars(select(SyncRunEvent).where(SyncRunEvent.run_id == run.id))).all()]
     assert sorted(e.kind for e in events) == ["skipped", "skipped"] and {e.level for e in events} == {"info"}
+
+
+# ---- a provider's entry ids are kept, so the next change goes straight to the entry ------------------------------
+
+
+@usesfakes
+async def test_the_entry_id_a_provider_names_when_creating_is_kept_for_later(session):
+    user = await make_user(session)
+    master_has(2)
+    await sync.run_sync(session, user.id, "manual")
+    mirror = user.mirrors[0]
+    assert await snapshots.remote_entry_id(session, mirror.id, "b1") == "entry-b1"
+    assert await snapshots.remote_entry_id(session, mirror.id, "b99") is None
+
+
+@usesfakes
+async def test_an_edit_pushed_later_is_handed_the_entry_id_it_needs(session):
+    user = await make_user(session)
+    master_has(2)
+    await sync.run_sync(session, user.id, "manual")
+    FakeClient.SAVED.clear()
+    async with sync.IdMapper(session) as mapper:
+        await mapper.remember({"fa": "a1", "fb": "b1"})
+    await sync.push_entry(session, user.mirrors[0].id, "fa", "a1", title(1, progress=9))
+    assert FakeClient.SAVED == [("fb", "b1", "entry-b1")]

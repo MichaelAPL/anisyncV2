@@ -30,6 +30,8 @@ from anisync.providers.registry import register
 API = "https://kitsu.app/api/edge"
 TOKEN_URL = "https://kitsu.app/api/oauth/token"  # noqa: S105 (a URL, not a secret)
 JSONAPI = "application/vnd.api+json"
+PAGE_SIZE = 100  # about a second per page on a 1000-entry list; Kitsu allows up to 500
+MIN_PAGE_SIZE = 25
 
 TO_STATUS = {
     "current": Status.WATCHING,
@@ -95,48 +97,60 @@ class KitsuClient(ProviderClient):
 
     async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
         # No incremental reads for Kitsu (`incremental_reads` is off): `since` is ignored and the whole list is read.
+        # Pages are small (a request that takes seconds is a request that rarely times out) and shrink when Kitsu is
+        # slow: a page that times out is asked again smaller, from the same place, so no work is lost.
         entries: list[ListEntry] = []
-        url: str | None = f"{API}/library-entries"
-        params: dict | None = {
+        size, offset = PAGE_SIZE, 0
+        base = {
             "filter[userId]": self.remote_user_id,
             "filter[kind]": "anime",
             "include": "anime,anime.mappings",
             "fields[anime]": "canonicalTitle,episodeCount,posterImage,mappings,nsfw",
             "fields[mappings]": "externalSite,externalId",
-            "page[limit]": 500,
         }
-        while url:
-            data = await self._jsonapi("GET", url, params=params)
+        while True:
+            try:
+                data = await self._jsonapi(
+                    "GET", f"{API}/library-entries", params=base | {"page[limit]": size, "page[offset]": offset}
+                )
+            except httpx.TimeoutException:
+                if size <= MIN_PAGE_SIZE:
+                    raise
+                size = max(MIN_PAGE_SIZE, size // 2)
+                continue
             included = {(i["type"], i["id"]): i for i in data.get("included", [])}
             for item in data["data"]:
-                attrs = item["attributes"]
-                anime_ref = item["relationships"]["anime"]["data"]
-                if anime_ref is None:
-                    continue
-                anime = included.get(("anime", anime_ref["id"]), {"attributes": {}, "relationships": {}})
-                ids = {"kitsu": anime_ref["id"]} | self._mapping_ids(anime, included)
-                rating = attrs.get("ratingTwenty")
-                entries.append(
-                    ListEntry(
-                        media_id=anime_ref["id"],
-                        external_ids=ids,
-                        remote_entry_id=item["id"],
-                        title=anime["attributes"].get("canonicalTitle", ""),
-                        total_episodes=anime["attributes"].get("episodeCount"),
-                        image_url=(anime["attributes"].get("posterImage") or {}).get("small"),
-                        adult=bool(anime["attributes"].get("nsfw")),
-                        status=TO_STATUS[attrs["status"]],
-                        progress=attrs.get("progress") or 0,
-                        score=rating * 5 if rating else None,
-                        rewatching=bool(attrs.get("reconsuming")),
-                        started_at=(dt.date() if (dt := _parse_dt(attrs.get("startedAt"))) else None),
-                        finished_at=(dt.date() if (dt := _parse_dt(attrs.get("finishedAt"))) else None),
-                        updated_at=_parse_dt(attrs.get("updatedAt")),
-                    )
-                )
-            url = data.get("links", {}).get("next")
-            params = None
-        return entries
+                entries.extend(self._entry(item, included))
+            offset += len(data["data"])
+            if not data["data"] or not data.get("links", {}).get("next"):
+                return entries
+
+    def _entry(self, item: dict, included: dict) -> list[ListEntry]:
+        attrs = item["attributes"]
+        anime_ref = item["relationships"]["anime"]["data"]
+        if anime_ref is None:
+            return []
+        anime = included.get(("anime", anime_ref["id"]), {"attributes": {}, "relationships": {}})
+        ids = {"kitsu": anime_ref["id"]} | self._mapping_ids(anime, included)
+        rating = attrs.get("ratingTwenty")
+        return [
+            ListEntry(
+                media_id=anime_ref["id"],
+                external_ids=ids,
+                remote_entry_id=item["id"],
+                title=anime["attributes"].get("canonicalTitle", ""),
+                total_episodes=anime["attributes"].get("episodeCount"),
+                image_url=(anime["attributes"].get("posterImage") or {}).get("small"),
+                adult=bool(anime["attributes"].get("nsfw")),
+                status=TO_STATUS[attrs["status"]],
+                progress=attrs.get("progress") or 0,
+                score=rating * 5 if rating else None,
+                rewatching=bool(attrs.get("reconsuming")),
+                started_at=(dt.date() if (dt := _parse_dt(attrs.get("startedAt"))) else None),
+                finished_at=(dt.date() if (dt := _parse_dt(attrs.get("finishedAt"))) else None),
+                updated_at=_parse_dt(attrs.get("updatedAt")),
+            )
+        ]
 
     @staticmethod
     def _mapping_ids(anime: dict, included: dict) -> dict[str, str]:
@@ -161,7 +175,7 @@ class KitsuClient(ProviderClient):
         )
         return data["data"][0]["id"] if data["data"] else None
 
-    async def save_entry(self, entry: ListEntry) -> None:
+    async def save_entry(self, entry: ListEntry) -> str | None:
         score = quantize_score(entry.score, self.score_step)
         attributes: dict[str, Any] = {
             "status": FROM_STATUS[entry.status],
@@ -174,33 +188,41 @@ class KitsuClient(ProviderClient):
         if entry.finished_at:
             attributes["finishedAt"] = entry.finished_at.isoformat()
 
-        entry_id = entry.remote_entry_id or await self._find_entry_id(entry.media_id)
+        # An entry we know (from the last read or write) is updated directly. A new one is simply created: asking Kitsu
+        # first whether it exists would double the requests of every create, and the answer is almost always no.
+        return await self._write(entry.remote_entry_id, entry.media_id, attributes)
+
+    async def _write(self, entry_id: str | None, media_id: str, attributes: dict[str, Any]) -> str | None:
         try:
-            await self._send(entry_id, entry.media_id, attributes)
+            return await self._send(entry_id, media_id, attributes)
         except httpx.HTTPStatusError as exc:
-            reason = str(exc)
             if exc.response.status_code != 422:
                 raise
-            if "already been taken" in reason:
-                # The entry exists but Kitsu doesn't list it for us: adult titles are hidden while the account's
-                # "SFW filter" is on, so we can't find the entry to update and can't create a second one.
-                raise ChangeSkipped(
-                    "Kitsu has this title on your list but hides it from other apps (adult titles are hidden "
-                    "while your Kitsu SFW filter is on)"
-                ) from exc
+            reason = str(exc)
+            if "already been taken" in reason and entry_id is None:
+                # The title is on the list already (added on Kitsu's site since we last looked, or hidden from us):
+                # find it and update it. If Kitsu doesn't show it to us, there is nothing we can update.
+                found = await self._find_entry_id(media_id)
+                if found is None:
+                    # Adult titles are hidden while the account's "SFW filter" is on: we can neither find the entry
+                    # to update nor create a second one.
+                    raise ChangeSkipped(
+                        "Kitsu has this title on your list but hides it from other apps (adult titles are hidden "
+                        "while your Kitsu SFW filter is on)"
+                    ) from exc
+                return await self._write(found, media_id, attributes)
             if "progress" in reason and "exceed" in reason:
                 # Kitsu counts fewer episodes for this title than the master list does: cap at Kitsu's count.
-                count = await self._episode_count(entry.media_id)
-                if count is not None and count < entry.progress:
-                    await self._send(entry_id, entry.media_id, attributes | {"progress": count})
-                    return
+                count = await self._episode_count(media_id)
+                if count is not None and count < attributes["progress"]:
+                    return await self._send(entry_id, media_id, attributes | {"progress": count})
             raise
 
-    async def _send(self, entry_id: str | None, media_id: str, attributes: dict[str, Any]) -> None:
+    async def _send(self, entry_id: str | None, media_id: str, attributes: dict[str, Any]) -> str | None:
         if entry_id:
             body = {"data": {"type": "libraryEntries", "id": entry_id, "attributes": attributes}}
             await self._jsonapi("PATCH", f"{API}/library-entries/{entry_id}", json=body)
-            return
+            return entry_id
         body = {
             "data": {
                 "type": "libraryEntries",
@@ -211,7 +233,8 @@ class KitsuClient(ProviderClient):
                 },
             }
         }
-        await self._jsonapi("POST", f"{API}/library-entries", json=body)
+        created = await self._jsonapi("POST", f"{API}/library-entries", json=body)
+        return (created.get("data") or {}).get("id")
 
     async def _episode_count(self, media_id: str) -> int | None:
         try:

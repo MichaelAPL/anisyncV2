@@ -76,6 +76,7 @@ class FakeClient(ProviderClient):
     FAIL_ON: ClassVar[set[str]] = set()  # media ids whose save raises
     REJECT_TOKENS: ClassVar[bool] = False  # simulate a revoked token
     RATE_LIMITED: ClassVar[dict[str, int]] = {}  # media id -> how many saves are refused with 'retry after 30s'
+    SAVED: ClassVar[list[tuple[str, str, str | None]]] = []  # (provider, title id, the entry id it was handed)
     HIDES_ADULT: ClassVar[set[str]] = set()  # provider ids whose account hides adult titles from other apps
     SKIP_ON: ClassVar[set[str]] = set()  # media ids the provider hides from us (saves are skipped, not failed)
     REAUTH_ON: ClassVar[str | None] = None  # media id whose save says the token was revoked
@@ -113,7 +114,8 @@ class FakeClient(ProviderClient):
             entries = [e for e in entries if e.updated_at and e.updated_at > since]
         return entries
 
-    async def save_entry(self, entry: ListEntry) -> None:
+    async def save_entry(self, entry: ListEntry) -> str | None:
+        FakeClient.SAVED.append((self.provider_id, entry.media_id, entry.remote_entry_id))
         if entry.media_id in FakeClient.FAIL_ON:
             raise RuntimeError(f"cannot save {entry.media_id}")
         if entry.media_id in FakeClient.SKIP_ON:
@@ -127,6 +129,7 @@ class FakeClient(ProviderClient):
         self._store()[entry.media_id] = replace(
             entry, remote_entry_id=f"entry-{entry.media_id}", updated_at=FakeClient.stamp()
         )
+        return f"entry-{entry.media_id}"  # what a provider that names its entries would report
 
     async def delete_entry(self, media_id: str, remote_entry_id: str | None = None) -> None:
         FakeClient.REQUESTS.append((self.provider_id, "delete"))
@@ -165,6 +168,7 @@ def reset_fakes() -> None:
     FakeClient.REAUTH_ON = None
     FakeClient.SKIP_ON = set()
     FakeClient.HIDES_ADULT = set()
+    FakeClient.SAVED = []
     FakeClient.REQUESTS = []
 
 

@@ -42,7 +42,10 @@ class Providers:
                 200, json={"data": [{"id": "55", "attributes": {"name": "k", "sfwFilter": False}}]}
             )
         )
-        router.post(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(201, json={}))
+        router.patch(url__startswith=f"{kitsu.API}/library-entries/").mock(return_value=httpx.Response(200, json={}))
+        router.post(f"{kitsu.API}/library-entries").mock(
+            return_value=httpx.Response(201, json={"data": {"id": "entry-new"}})  # Kitsu names the entry it created
+        )
         router.patch(url__regex=rf"{mal.API}/anime/\d+/my_list_status").mock(return_value=httpx.Response(200, json={}))
 
     def mal_list(self, request: httpx.Request) -> httpx.Response:
@@ -191,7 +194,7 @@ async def test_one_edit_costs_the_read_plus_one_write_per_mirror(session, provid
     assert (anilist_result["update"], kitsu_result["update"]) == (1, 1)
     calls = providers.calls()
     assert calls["api.myanimelist.net"] == 1 and calls["graphql.anilist.co"] == 1  # the AniList write
-    assert calls["kitsu.app"] == 2  # the write, after finding the entry that already exists
+    assert calls["kitsu.app"] == 1  # straight to the entry: its id was kept when it was created
 
 
 async def test_unmappable_titles_are_not_looked_up_again_every_night(session, providers):
