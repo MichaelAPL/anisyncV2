@@ -167,4 +167,11 @@ def no_real_waiting(monkeypatch):
         pauses.append(seconds)
 
     monkeypatch.setattr(sync, "_pause", pause)
+
+    from anisync.providers import base
+
+    async def no_wait(seconds: float) -> None:
+        pauses.append(seconds)
+
+    monkeypatch.setattr(base, "_retry_pause", no_wait)
     return pauses

@@ -73,6 +73,8 @@ async def test_every_provider_request_is_counted_with_its_outcome():
         httpx.Response(200, json={"id": 1, "name": "x"}),
         httpx.Response(429, headers={"Retry-After": "1"}),
         httpx.Response(500),
+        httpx.ConnectError("down"),  # a read that fails at the network level is asked again twice: three attempts
+        httpx.ConnectError("down"),
         httpx.ConnectError("down"),
     ]
     client = get_provider("mal").client("token")
@@ -82,7 +84,8 @@ async def test_every_provider_request_is_counted_with_its_outcome():
             await client.whoami()
         assert type(info.value).__name__ == exc
     [counts] = metrics.pending().values()
-    assert (counts.requests, counts.rate_limited, counts.errors) == (4, 1, 2)
+    # every attempt counts as a request: 1 ok, 1 rate limited, 1 server error, 3 failed connections
+    assert (counts.requests, counts.rate_limited, counts.errors) == (6, 1, 4)
 
 
 # ---- sync runs ---------------------------------------------------------------------------------------------

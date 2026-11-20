@@ -195,3 +195,39 @@ async def test_kitsu_progress_errors_stay_errors_when_the_episode_count_is_unkno
     respx.get(f"{kitsu.API}/anime/47470").mock(return_value=httpx.Response(404, json={"errors": []}))
     with pytest.raises(httpx.HTTPStatusError, match="cannot exceed"):
         await kitsu.KitsuClient("tok", remote_user_id="1").save_entry(_kitsu_entry())
+
+
+@respx.mock
+async def test_reads_are_asked_again_after_a_network_hiccup_but_writes_are_not(no_real_waiting):
+    route = respx.get(f"{mal.API}/users/@me/animelist").mock(
+        side_effect=[httpx.ReadTimeout("slow"), httpx.ConnectError("reset"), httpx.Response(200, json={"data": []})]
+    )
+    assert await mal.MalClient("tok").fetch_list() == []
+    assert route.call_count == 3 and no_real_waiting == [2.0, 6.0]
+
+    patch = respx.patch(f"{mal.API}/anime/1/my_list_status").mock(side_effect=httpx.ReadTimeout("slow"))
+    with pytest.raises(httpx.ReadTimeout):
+        await mal.MalClient("tok").save_entry(ListEntry(media_id="1", status=Status.WATCHING, progress=1))
+    assert patch.call_count == 1  # a write that may have gone through is never repeated blindly
+
+
+@respx.mock
+async def test_a_read_that_keeps_failing_gives_up_after_the_retries_and_provider_refusals_are_not_retried(
+    no_real_waiting,
+):
+    route = respx.get(f"{mal.API}/users/@me/animelist").mock(side_effect=httpx.ReadTimeout("slow"))
+    with pytest.raises(httpx.ReadTimeout):
+        await mal.MalClient("tok").fetch_list()
+    assert route.call_count == 3
+    refused = respx.get(f"{mal.API}/users/@me").mock(return_value=httpx.Response(500, text="oops"))
+    with pytest.raises(httpx.HTTPStatusError):
+        await mal.MalClient("tok").whoami()
+    assert refused.call_count == 1  # an answer, even a bad one, isn't a hiccup
+
+
+@respx.mock
+async def test_errors_that_are_not_network_hiccups_are_not_retried(no_real_waiting):
+    route = respx.get(f"{mal.API}/users/@me/animelist").mock(side_effect=httpx.UnsupportedProtocol("nope"))
+    with pytest.raises(httpx.UnsupportedProtocol):
+        await mal.MalClient("tok").fetch_list()
+    assert route.call_count == 1 and no_real_waiting == []

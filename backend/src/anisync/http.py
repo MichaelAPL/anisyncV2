@@ -9,5 +9,6 @@ USER_AGENT = "AniSync/0.1"
 
 def client(**kwargs) -> httpx.AsyncClient:
     headers = {"User-Agent": USER_AGENT} | dict(kwargs.pop("headers", {}) or {})
-    kwargs.setdefault("timeout", 30)
+    # Big list pages can take a while to build on the provider's side: wait longer for an answer than for a connection.
+    kwargs.setdefault("timeout", httpx.Timeout(30, read=90))
     return httpx.AsyncClient(headers=headers, **kwargs)

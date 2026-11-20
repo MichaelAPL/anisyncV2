@@ -264,12 +264,13 @@ async def run_sync(
         run = await start_run(session, user.id, trigger)
         if run is None:
             return {"skipped": "a sync is already running"}
+    run_id = run.id if run is not None else None  # read now: a rollback expires `run`, and reading it then is I/O
     try:
         return await _sync_mirrors(session, user, run, paused, dry_run, full)
     except BaseException:
-        if run is not None:  # never leave a run "running" behind: the dashboard and admins read it as in progress
+        if run_id is not None:  # never leave a run "running" behind: the dashboard and admins read it as in progress
             await session.rollback()
-            failed = await session.get(SyncRun, run.id)
+            failed = await session.get(SyncRun, run_id)
             if failed is not None:
                 failed.status, failed.finished_at = "error", datetime.now(UTC)
                 failed.summary = failed.summary or {"error": "the sync stopped unexpectedly"}

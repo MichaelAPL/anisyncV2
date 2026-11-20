@@ -121,3 +121,22 @@ async def test_the_list_reports_rate_limits_with_the_providers_name(session):
     async with browser(token) as c:
         response = await c.get("/api/list")
     assert response.status_code == 429 and response.json() == {"detail": "FA is busy right now. Try again in a minute"}
+
+
+@usesfakes
+async def test_a_crash_is_closed_even_when_the_rollback_expires_everything(session, monkeypatch):
+    # In production the rollback expires every loaded object; touching one afterwards is I/O outside the right context
+    # (it crashed the cleanup and left the run "running"). The test session doesn't expire on rollback, so make it.
+    user_id = (await make_sync_user(session)).id
+    real_rollback = session.rollback
+
+    async def rollback_and_expire():
+        await real_rollback()
+        session.expire_all()
+
+    monkeypatch.setattr(session, "rollback", rollback_and_expire)
+    FakeClient.FETCH_ERROR = httpx.ReadTimeout("slow")
+    with pytest.raises(httpx.ReadTimeout):
+        await sync.run_sync(session, user_id, "manual")
+    run = (await session.scalars(select(SyncRun).where(SyncRun.user_id == user_id))).one()
+    assert run.status == "error" and run.finished_at is not None

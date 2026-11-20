@@ -121,6 +121,16 @@ class ChangeSkipped(Exception):
     a skipped title with the reason, not as an error."""
 
 
+READ_RETRIES = 2
+RETRY_PAUSES = (2.0, 6.0)
+# Network-level hiccups worth asking again for; a refusal from the provider (4xx/5xx) is a real answer and isn't here.
+TRANSIENT_ERRORS = (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError)
+
+
+async def _retry_pause(seconds: float) -> None:
+    await asyncio.sleep(seconds)  # a function of its own so tests can skip the wait
+
+
 class RateLimited(Exception):
     def __init__(self, provider_id: str, retry_after: float | None):
         super().__init__(f"{provider_id} rate limited (retry after {retry_after}s)")
@@ -269,13 +279,20 @@ class ProviderClient(abc.ABC):
         headers = kwargs.pop("headers", {})
         if self.access_token:
             headers["Authorization"] = f"Bearer {self.access_token}"
-        started = time.monotonic()
-        try:
-            async with self.limiter:
-                resp = await self.http.request(method, url, headers=headers, **kwargs)
-        except Exception:
-            metrics.record(self.provider_id, None, time.monotonic() - started)
-            raise
+        # Reads can simply be asked again if the connection hiccups; writes are never repeated here (a change that
+        # fails is planned again by the next sync, which is safer than risking it being applied twice).
+        attempts = READ_RETRIES + 1 if method.upper() in ("GET", "HEAD") else 1
+        for attempt in range(attempts):
+            started = time.monotonic()
+            try:
+                async with self.limiter:
+                    resp = await self.http.request(method, url, headers=headers, **kwargs)
+                break
+            except Exception as exc:
+                metrics.record(self.provider_id, None, time.monotonic() - started)
+                if attempt + 1 >= attempts or not isinstance(exc, TRANSIENT_ERRORS):
+                    raise
+                await _retry_pause(RETRY_PAUSES[attempt])
         metrics.record(self.provider_id, resp.status_code, time.monotonic() - started)
         if resp.status_code == 429:
             retry_after = resp.headers.get("Retry-After")
