@@ -488,8 +488,10 @@ tests per screen configuration (Playwright).
         Discord `#api` (API terms, password-grant flow, User-Agent, bot protection).
       - **If MAL says no:** MAL becomes read-only or import-only, or the snapshot is dropped for MAL data. Decide the
         design only after the answer.
-      - Whatever they say: delete everything when a user unlinks an account or deletes their AniSync account (account
-        deletion exists, check unlink).
+      - Whatever they say: delete everything when a user unlinks an account or deletes their AniSync account. Done and
+        tested (2026-11-20): unlinking removes the account row (tokens, list snapshots), its sync log events and the
+        user's unmatched-title rows for that provider (`deletion.forget_account`, user and admin routes); deleting the
+        user cascades the rest. What stays: the shared ID mapping (no user data) and anonymous request counters.
 - [ ] Monitoring with existing tools, not built in-house: **Sentry** (free tier) for errors with stack traces and
       alerts; **Better Stack or UptimeRobot** (free) for uptime checks on `/api/health`. Link both from the admin panel.
 - [ ] Provider logos: MAL §17 bars its marks "in or as part of" apps beyond source attribution, and AniList/Kitsu

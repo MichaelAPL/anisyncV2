@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from anisync import permissions, sessions
+from anisync import deletion, permissions, sessions
 from anisync.config import get_settings
 from anisync.models import AdminAction, LinkedAccount, User
 
@@ -140,6 +140,7 @@ async def unlink(session: AsyncSession, user: User, account: LinkedAccount) -> N
         others = sorted((a for a in user.accounts if a.id != account.id), key=lambda a: a.id)
         user.master_account_id = others[0].id if others else None
         await session.flush()
+    await deletion.forget_account(session, user, account)
     await session.delete(account)
     await session.commit()
     await session.refresh(user, ["accounts"])

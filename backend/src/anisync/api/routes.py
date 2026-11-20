@@ -258,6 +258,7 @@ async def unlink_account(account_id: int, user: CurrentUser, session: Session) -
         raise HTTPException(400, "Can't unlink your only account (it's how you sign in)")
     if user.master_account_id == account.id:
         user.master_account_id = None
+    await deletion.forget_account(session, user, account)
     user.accounts.remove(account)
     await session.commit()
     return _me(user)

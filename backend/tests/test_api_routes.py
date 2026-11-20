@@ -5,7 +5,7 @@ from procrastinate.testing import InMemoryConnector
 from sqlalchemy import select
 
 from anisync import jobs, sync
-from anisync.models import LinkedAccount, SyncRun
+from anisync.models import LinkedAccount, ListSnapshot, SyncRun, SyncRunEvent, UnmatchedTitle, UnmatchedTitleUser
 from tests.fakes import FakeClient
 from tests.test_ownership import browser, make_user, titles
 
@@ -135,3 +135,28 @@ async def test_signing_the_account_pages_never_expose_tokens(alice, session):
     text = (await c.get("/api/me")).text + (await c.get("/api/sessions")).text
     stored = (await session.scalars(select(LinkedAccount.provider))).all()
     assert "token-fa-al" not in text and stored  # the plaintext token isn't in any response
+
+
+async def test_unlinking_deletes_everything_we_hold_about_that_account(alice, session):
+    """Provider terms (MAL 3(e)): our copy of a provider's data goes when the user unlinks it."""
+    c, user, accounts = alice
+    fa, fb = accounts["fa"], accounts["fb"]
+    run = SyncRun(user_id=user.id, status="ok", trigger="manual")
+    session.add(run)
+    session.add(UnmatchedTitle(source="fa", source_id="1", target="fb", title="Some title"))
+    await session.flush()
+    session.add_all(
+        [
+            ListSnapshot(account_id=fb.id, external_id="1", status="watching"),
+            ListSnapshot(account_id=fa.id, external_id="2", status="watching"),
+            SyncRunEvent(run_id=run.id, account_id=fb.id, level="info", kind="unmapped", message="x"),
+            SyncRunEvent(run_id=run.id, account_id=fa.id, level="info", kind="unmapped", message="y"),
+            UnmatchedTitleUser(source="fa", source_id="1", target="fb", user_id=user.id),
+        ]
+    )
+    await session.flush()
+    assert (await c.delete(f"/api/accounts/{fb.id}")).status_code == 200
+    for model, own in ((ListSnapshot, "account_id"), (SyncRunEvent, "account_id")):
+        assert len((await session.scalars(select(model).where(getattr(model, own) == fb.id))).all()) == 0
+        assert len((await session.scalars(select(model).where(getattr(model, own) == fa.id))).all()) == 1  # untouched
+    assert (await session.scalars(select(UnmatchedTitleUser).where(UnmatchedTitleUser.user_id == user.id))).all() == []
