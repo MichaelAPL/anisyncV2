@@ -461,14 +461,35 @@ tests per screen configuration (Playwright).
 - [ ] Production data protection: Postgres reachable only from the app (private network, no public port), TLS to
       the DB if the host offers it, encrypted automated backups with tested restore, least-privilege DB user for the
       app (no superuser), and access to the hosting dashboard limited to 2FA-protected accounts.
-- [ ] Re-check provider docs/changelogs and API terms before launch (MAL API agreement, AniList terms of use, Kitsu).
-      Specific checks:
-      - MAL §3(c) forbids storing MAL content "that consists of personal information". List snapshots (Phase 1.6/3)
-        hold users' list data server-side; confirm that's acceptable, or limit what we keep, and delete everything
-        when a user unlinks an account or deletes their AniSync account. Add account deletion if it's missing.
-      - AniList forbids using its API "as a backup or data storage service" and mass data collection: snapshots are
-        a sync cache only; never offer list export/backup features based on them.
-      - MAL §4(b): changes that significantly increase load on their servers (or adding ads) need review.
+- [ ] **Provider terms: ask each provider in writing before launch** (read 2026-11-20; re-check before launch, MAL's
+      text is dated 2019). **Launch blocker until MAL and AniList answer.** Findings:
+      - **MAL** (API agreement, `myanimelist.net/static/apiagreement.html`): §3(c) bars storing or processing MAL
+        users' personal information or user-generated content server-side (our snapshots very likely count);
+        §3(a)(vii) bars combining the API with services MAL hasn't authorized in writing (that is the sync itself);
+        §3(a)(xii) bars editing MAL content without written authorization (probably writes to MAL; writes to MAL are
+        also still untested with a real account); §3(e) delete within 24 h on request; §4(b) tell MAL at release,
+        they may review, ads or major features need notice; §1(i) non-commercial apps may take donations without
+        quotas (our one-off model fits), ads allowed if non-disruptive but are a review trigger, revenue from a
+        commercial app needs written authorization (§3(a)(xiv)); §4(c) abuse-report channel; §18 audits. Not read:
+        the API reference page (rate limits, guidelines) and MAL's privacy policy (ours must be no less protective).
+      - **AniList** (`docs.anilist.co/guide/terms-of-use`): no API use as a backup/data-storage service (snapshots
+        stay a sync cache; never offer export/backup from them); no hoarding or mass collection; no use "within
+        competing, non-complementary services of the same nature (anime and manga list or tracker services)",
+        covering user and media data: we believe a sync tool is complementary, but ask. Free below $150 revenue per
+        month, a commercial license above that (donations count as revenue until told otherwise). Naming: our name
+        doesn't contain "AniList"; any "for AniList" wording must say so. Rate limit 90/min, currently degraded to
+        30/min; no raise requests accepted; burst limiter. `anilist.co/terms` is only a privacy policy.
+      - **Kitsu** (`kitsu.app/terms`, v1.0 from 2016): API use is "subject to a separate set of terms available
+        upon request"; scraping and bots are banned without written consent; name and logo need written permission.
+        Nothing on the password grant, so ask (Discord `#api`).
+      - **Messages to send** (user sends them, from the project's contact address): MAL via their support form
+        (server-side sync cache, write access, syncing with AniList/Kitsu, donations); AniList at
+        contact@anilist.co (complementary sync tool, snapshot cache, donations vs the $150 threshold); Kitsu on
+        Discord `#api` (API terms, password-grant flow, User-Agent, bot protection).
+      - **If MAL says no:** MAL becomes read-only or import-only, or the snapshot is dropped for MAL data. Decide the
+        design only after the answer.
+      - Whatever they say: delete everything when a user unlinks an account or deletes their AniSync account (account
+        deletion exists, check unlink).
 - [ ] Monitoring with existing tools, not built in-house: **Sentry** (free tier) for errors with stack traces and
       alerts; **Better Stack or UptimeRobot** (free) for uptime checks on `/api/health`. Link both from the admin panel.
 - [ ] Provider logos: MAL §17 bars its marks "in or as part of" apps beyond source attribution, and AniList/Kitsu
