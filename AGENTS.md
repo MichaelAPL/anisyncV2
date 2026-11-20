@@ -115,6 +115,8 @@ uv run alembic revision --autogenerate -m "..."   # after model changes (ignores
 
 cd ../frontend && npm install && npm run dev      # http://localhost:5173
 cd ../frontend && npm test                       # Vitest + Testing Library (jsdom), fetch stubbed per test (src/test/harness.tsx)
+cd ../frontend && npm run e2e                  # Playwright in your installed Chrome: desktop/phone x light/dark, against a throwaway
+                                              # backend (backend/e2e/server.py: DB anisync_e2e, fake providers, /__e2e/* seeding routes)
 ```
 
 OAuth redirect URIs (register with each redirect-flow provider): `http://localhost:5173/auth/<provider id>/callback`

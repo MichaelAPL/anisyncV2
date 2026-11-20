@@ -51,4 +51,5 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B", "S"]
 
 [tool.ruff.lint.per-file-ignores]
+"e2e/*" = ["S105", "S106"]  # fake credentials of a throwaway test server
 "tests/**" = ["S101", "S105", "S106", "S311"]  # asserts, fake credentials and fake random in tests
