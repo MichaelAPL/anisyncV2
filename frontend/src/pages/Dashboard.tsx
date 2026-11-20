@@ -85,7 +85,7 @@ export function Dashboard() {
               <p className="body-m">{me.next_sync_at ? `Next sync today around ${utcHour(me.next_sync_at)}` : 'Not scheduled'}</p>
             </div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <Link to="/review" className="btn btn-outlined" style={{ borderColor: 'var(--on-primary-container)', color: 'var(--on-primary-container)' }}>
+              <Link to="/preview" className="btn btn-outlined" style={{ borderColor: 'var(--on-primary-container)', color: 'var(--on-primary-container)' }}>
                 <Icon name="eye" size={18} /> Preview changes
               </Link>
               <button type="button" className="btn btn-filled" disabled={start.isPending || syncing}

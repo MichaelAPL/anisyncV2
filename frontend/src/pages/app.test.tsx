@@ -108,6 +108,12 @@ describe('dashboard', () => {
     expect(await screen.findByText(/12 adult titles are not copied, as you chose/)).toBeInTheDocument()
   })
 
+  it('opens the preview inside the app, not the setup flow', async () => {
+    stubApi({ 'GET /api/sync/runs': [] })
+    renderRoute('/dashboard')
+    expect(await screen.findByRole('link', { name: /preview changes/i })).toHaveAttribute('href', '/preview')
+  })
+
   it('shows no adult-content notice when nothing is hidden', async () => {
     stubApi({ 'GET /api/sync/runs': [] })
     renderRoute('/dashboard')

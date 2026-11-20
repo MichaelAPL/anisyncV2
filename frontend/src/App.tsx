@@ -8,7 +8,7 @@ import { Providers, SitePage, Titles } from './admin/Site'
 import { Dashboard } from './pages/Dashboard'
 import { AppShell } from './ui/Shell'
 import { useMe, useSite } from './api/hooks'
-import { FirstSync } from './pages/FirstSync'
+import { FirstSync, PreviewChanges } from './pages/FirstSync'
 import { ListEditor } from './pages/ListEditor'
 import { Settings } from './pages/Settings'
 import { Maintenance, NotFound, Privacy } from './pages/Static'
@@ -37,6 +37,7 @@ export function AppRoutes() {
           <Route path="/review" element={<FirstSync />} />
           <Route element={<AppShell />}>
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/preview" element={<PreviewChanges />} />
             <Route path="/list" element={<ListEditor />} />
             <Route path="/settings" element={<Settings />} />
           </Route>

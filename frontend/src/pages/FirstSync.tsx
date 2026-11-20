@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useOutletContext } from 'react-router'
 import { ApiError } from '../api/client'
-import { useProviders, useStartSync, useSyncPreview } from '../api/hooks'
+import { useProviders, useRuns, useStartSync, useSyncPreview } from '../api/hooks'
 import type { Change, Me, MirrorResult } from '../api/types'
 import { Icon } from '../ui/Icon'
+import { isRunning } from '../format'
 import { finishSetup } from '../setup'
 import { PreviewLoading } from '../ui/Loading'
 import { OnboardingLayout, RequireUser } from '../ui/Onboarding'
 import { ProviderChip } from '../ui/Provider'
+import { Topbar } from '../ui/Shell'
 
 const TAG = { create: ['tag-ok', 'Add'], update: ['tag-info', 'Update'], delete: ['tag-err', 'Remove'] } as const
 type Filter = 'all' | Change['op']
@@ -86,9 +88,11 @@ function Mirror({ result, prune, name }: { result: MirrorResult; prune: boolean;
   )
 }
 
-function Body({ me }: { me: Me }) {
+/** The review of what a sync would change. `setup`: step 3 of the first-time flow; `preview`: from the dashboard. */
+function Review({ me, mode }: { me: Me; mode: 'setup' | 'preview' }) {
   const providers = useProviders()
   const preview = useSyncPreview()
+  const runs = useRuns()
   const start = useStartSync()
   const navigate = useNavigate()
   const [tab, setTab] = useState<string | null>(null)
@@ -97,18 +101,32 @@ function Body({ me }: { me: Me }) {
   const results = preview.data ? Object.values(preview.data) : []
   const current = results.find((r) => r.provider === tab) ?? results[0]
   const failed = results.filter((r) => r.error)
+  const syncRunning = (runs.data ?? []).some(isRunning)
 
   if (!providers.data) return <p className="body-l muted" style={{ padding: 24 }} role="status">Loading…</p>
   const loadError = preview.error instanceof ApiError ? preview.error.message : preview.isError ? "Couldn't reach AniSync." : null
+  const setup = mode === 'setup'
 
-  return (
-    <OnboardingLayout step={3} wide>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <h1 className="headline-l">Here's what will change</h1>
+  const content = (
+    <>
+      {setup ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <h1 className="headline-l">Here's what will change</h1>
+          <p className="body-l muted">
+            Copying from <strong style={{ color: 'var(--on-surface)' }}>{master ? name(master.provider) : 'your master'}</strong>. Nothing is written until you apply.
+          </p>
+        </div>
+      ) : (
         <p className="body-l muted">
-          Copying from <strong style={{ color: 'var(--on-surface)' }}>{master ? name(master.provider) : 'your master'}</strong>. Nothing is written until you apply.
+          Copying from <strong style={{ color: 'var(--on-surface)' }}>{master ? name(master.provider) : 'your master'}</strong>. Nothing is written until you sync.
         </p>
-      </div>
+      )}
+      {syncRunning && (
+        <div className="banner banner-info" role="status" style={{ borderRadius: 16, padding: '16px 20px' }}>
+          <Icon name="sync" size={20} style={{ flex: 'none' }} />
+          <span className="body-m" style={{ flex: '1 1 260px' }}>A sync is running right now. You can look at the preview, but starting another is on hold until it finishes.</span>
+        </div>
+      )}
       {preview.isFetching && (
         <PreviewLoading master={master?.provider} mirrors={me.accounts.filter((a) => !a.is_master && a.sync_enabled).map((a) => a.provider)} />
       )}
@@ -136,19 +154,38 @@ function Body({ me }: { me: Me }) {
         <Mirror result={current} prune={!!me.accounts.find((a) => a.provider === current.provider)?.prune_missing} name={name(current.provider)} />
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <Link to="/master" className="btn btn-text"><Icon name="arrow-left" size={18} /> Back</Link>
+        <Link to={setup ? '/master' : '/dashboard'} className="btn btn-text"><Icon name="arrow-left" size={18} /> {setup ? 'Back' : 'Back to dashboard'}</Link>
         <button
           type="button"
           className="btn btn-filled"
-          disabled={!preview.data || preview.isFetching || failed.length > 0 || start.isPending}
+          disabled={!preview.data || preview.isFetching || failed.length > 0 || start.isPending || syncRunning}
           onClick={() => start.mutate(undefined, { onSuccess: () => { finishSetup(); navigate('/dashboard') } })}
         >
-          {start.isPending ? 'Starting…' : `Apply to ${results.map((r) => name(r.provider)).join(' and ') || 'mirrors'}`}
+          {start.isPending ? 'Starting…' : syncRunning ? 'A sync is running…' : `Apply to ${results.map((r) => name(r.provider)).join(' and ') || 'mirrors'}`}
         </button>
       </div>
-      {start.isError && <p className="body-m" role="alert" style={{ color: 'var(--error)' }}>Couldn't start the sync. Try again.</p>}
-    </OnboardingLayout>
+      {start.isError && (
+        <p className="body-m" role="alert" style={{ color: 'var(--error)' }}>
+          {start.error instanceof ApiError ? start.error.message : "Couldn't start the sync. Try again."}
+        </p>
+      )}
+    </>
+  )
+
+  if (setup) return <OnboardingLayout step={3} wide>{content}</OnboardingLayout>
+  return (
+    <>
+      <Topbar title="Preview changes" me={me} />
+      <main className="page" style={{ paddingTop: 0, maxWidth: 960 }}>{content}</main>
+    </>
   )
 }
 
-export const FirstSync = () => <RequireUser>{(me) => <Body me={me} />}</RequireUser>
+/** Step 3 of the first-time setup. */
+export const FirstSync = () => <RequireUser>{(me) => <Review me={me} mode="setup" />}</RequireUser>
+
+/** The same review, reached from the dashboard (inside the app, not the setup stepper). */
+export function PreviewChanges() {
+  const me = useOutletContext<Me>()
+  return <Review me={me} mode="preview" />
+}

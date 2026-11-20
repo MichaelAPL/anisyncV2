@@ -126,10 +126,42 @@ describe('review first sync', () => {
     expect(await screen.findByText(/3 adult titles are not copied to myanimelist, as you chose/i)).toBeInTheDocument()
   })
 
+  it('holds Apply and says why while a sync is already running', async () => {
+    const running = [{ id: 1, trigger: 'manual', status: 'running', started_at: new Date(Date.now() - 30_000).toISOString(), finished_at: null, summary: {}, planned: 10, processed: 3 }]
+    stubApi({ 'GET /api/sync/preview': preview, 'GET /api/sync/runs': running })
+    renderRoute('/review')
+    await screen.findByText('Dandadan')
+    expect(screen.getByText(/a sync is running right now/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /a sync is running/i })).toBeDisabled()
+  })
+
   it('does not offer to apply while a mirror reports an error', async () => {
     stubApi({ 'GET /api/sync/preview': { mal: { ...preview.mal, error: 'boom', reauth_required: true } } })
     renderRoute('/review')
     expect(await screen.findByText(/connection expired/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /apply/i })).toBeDisabled()
+  })
+})
+
+describe('preview from the dashboard', () => {
+  it('is part of the app, not the setup stepper, and goes back to the dashboard', async () => {
+    localStorage.setItem('anisync-setup-done', '1')
+    stubApi({ 'GET /api/sync/preview': preview, 'GET /api/sync/runs': [] })
+    renderRoute('/preview')
+    expect(await screen.findByRole('heading', { name: 'Preview changes' })).toBeInTheDocument()
+    await screen.findByText('Dandadan')
+    expect(screen.queryByText(/step 3 of 3/i)).toBeNull()
+    expect(screen.queryByRole('progressbar')).toBeNull()
+    expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute('href', '/dashboard')
+    expect(screen.getByRole('button', { name: /apply to myanimelist/i })).toBeEnabled()
+  })
+
+  it('cannot start another sync while one is running', async () => {
+    localStorage.setItem('anisync-setup-done', '1')
+    const running = [{ id: 1, trigger: 'scheduled', status: 'running', started_at: new Date(Date.now() - 30_000).toISOString(), finished_at: null, summary: {}, planned: 0, processed: 0 }]
+    stubApi({ 'GET /api/sync/preview': preview, 'GET /api/sync/runs': running })
+    renderRoute('/preview')
+    await screen.findByText('Dandadan')
+    expect(screen.getByRole('button', { name: /a sync is running/i })).toBeDisabled()
   })
 })
