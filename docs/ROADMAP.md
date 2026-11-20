@@ -27,8 +27,9 @@ Update this file at the end of every working session. Work the phases in order; 
 
 ## Not verified yet
 
-- Real OAuth round-trips (needs MAL + AniList client registrations in `backend/.env`).
-- Writes to real accounts (MAL PATCH, AniList SaveMediaListEntry, Kitsu library-entries). Test on throwaway accounts first.
+- Writes to MAL as a *mirror* (MAL has only been the master so far). AniList and Kitsu writes, the MAL and AniList OAuth round trips
+  and the Kitsu login are verified with real accounts (2026-11-19).
+- A real list of 2000+ entries (Phase 6).
 
 ## Decisions (2026-11-17)
 
@@ -305,67 +306,131 @@ Design if we do it (nothing built now blocks it; a user with no linked accounts 
       registrations older than 7 days; admin lookup shows email and verified status; frontend onboarding state for
       "no linked accounts yet".
 
-## Phase 5: Frontend  ← in progress
+## Phase 5: Frontend  ✔ built and tested, now used with real accounts
 
-**5.1 done 2026-11-19 (foundation):** the canvas stylesheet is the app stylesheet (`src/styles/anisync-m3.css`, `html.as.theme-*`),
-theme switch with a pre-React script (localStorage only for now; saving it per user needs a `users.theme` column and
-`PATCH /api/me`, not built yet), API client + `useMe`/`useProviders`/`useSite`, router, Vite proxy for `/api` and `/auth`,
-landing page. Build and lint are clean. **5.2 done 2026-11-19 (setup flow):** Link lists (`/link`, OAuth buttons and the Kitsu password form), Choose master (`/master`, master radio, per-mirror switches), Review first sync (`/review`, dry run with per-mirror tabs, filters, unmatched list, Apply). Checked in Chrome against the real backend with a seeded user: master change and switches persist, the preview error path shows the server's message, and Apply posts once and goes to the dashboard; the preview itself was a mocked response because the dev accounts have no real tokens. **Not verified:** real OAuth round trips, a real preview. **5.3-5.7 done 2026-11-19 (every screen):** app shell (side rail, bottom bar on phones, site banner), Dashboard, My list with the entry editor
-(side panel, bottom sheet on phones, undo, "check master" refresh), Settings (profile name and picture, accounts, sync switches,
-theme saved per user with new `users.theme` + `PATCH /api/me {theme}`, sessions, delete account), Privacy, maintenance gate,
-404, and the admin area (Overview, Syncs and logs, Users and user detail, Unmatched titles, Providers and dataset, Banner and
-maintenance) under `/admin`. Checked in Chrome against the real backend with a seeded admin user: the shell, dashboard, settings
-and all admin pages load and the admin pages show live data. **Not verified:** phone layouts and the bottom sheet (the browser
-window couldn't be resized), light mode, anything needing real provider tokens (list load, sync, previews), the admin write
-actions (ban, role, pause, import) in the UI, real OAuth. **Not built:** "Add anime" (needs a title search endpoint that doesn't
-exist), donation card (no platform chosen), a Playwright browser smoke test (needs a browser download), a chart on the admin overview (a table for now).
-*Fixed 2026-11-19:* `/api/list` and the other endpoints answer 502 ("a list site isn't responding") or 429 (rate limited, with the provider's name) instead of 500 when a provider fails.
-**One sync at a time (2026-11-19, backend 455 tests):** `sync.start_run` opens a run under a per-user advisory lock and refuses when one is unfinished and under 15 minutes old (`run_sync` answers `skipped`, `POST /api/sync` answers 409); a run that raises is now closed as `error` instead of staying "running" forever (this is what could leave the dashboard stuck). The lock itself is not covered by a test (needs two real connections).
-**Long syncs (2026-11-19, backend 466 tests, frontend 50; migration `e5b8c2d94f17` adds `sync_runs.planned/processed`):** a change refused with "rate limited" now waits out the provider's retry time (capped at 60 s, up to 3 retries) instead of failing the next dozens of changes; changes are committed in batches of 25, so the dashboard shows "Running · 40 of 300" and an interrupted sync keeps what it wrote; runs that stopped halfway become `interrupted` (all open runs at startup when the worker runs in-process, runs older than 15 minutes in the daily housekeeping) and show as "Interrupted". Not verified against a real provider's rate limiting: the pacing is tested with fakes only; the ~25/min AniList limiter is unchanged.
-**Kitsu quirks found with the first real sync (2026-11-19):** (1) adult titles are hidden from API listings while the Kitsu account's `sfwFilter` is on, so the owner can't see the existing entry and a create answers 422 "animeId has already been taken"; the change is now *skipped* with the reason (`ChangeSkipped`, `skipped`/`skipped_reason` in the run summary, an info event, not an error) and shown on the dashboard. The same filter means a full read of the Kitsu mirror misses those entries. Turning the filter off in the Kitsu account settings fixes it; AniSync does not change that setting itself. The skipped changes are still planned again on every sync (about 2 requests each); a negative cache would stop that. (2) Kitsu counts fewer episodes than the master for some titles (422 "progress cannot exceed length of media"): progress is now capped at Kitsu's `episodeCount` and retried once. (3) The Kitsu token endpoint refuses the default HTTP User-Agent (fixed earlier).
-**Adult content (2026-11-19, migration `f7c3d9a2e158` `linked_accounts.hides_adult`, backend 483 tests, frontend 56):** how each provider treats adult titles, checked against a real account: MAL leaves them out of the list API unless `nsfw=true` is sent (the client does: 897 vs 962 entries); AniList returns them to the owner even with "Display adult content" off (957 entries, 26 adult); Kitsu hides them while the account's SFW filter is on (Kitsu Settings → Adult Content). Kitsu's filter is read from the profile at link time, on every full read and on manual syncs and previews (one request, only for providers with an `adult_help`); a skipped title also sets the flag. The user is told on the link page, the dashboard and Settings, with the provider's own instructions (`Provider.adult_help`, served by `/api/providers`). A master that hides titles never causes deletions on the mirrors (full sync and push), because hidden is not the same as removed. **Adult titles, second part (migration `a1d4e7c3b952`, backend 497 tests, frontend 65):** each provider's adult flag is read with the list (MAL `nsfw` = `black` only, since `gray` is ecchi; AniList `isAdult`; Kitsu `nsfw`) and stored on the snapshot. *Per mirror* "Don't copy adult titles" (`linked_accounts.skip_adult`): adult titles are neither created nor updated there, are counted as `adult_skipped`, are not listed as unmatched, and the mirror's own copy is never deleted by it; edit pushes respect it. *Per user* "Show covers of adult titles" (`users.show_adult_covers`, default off): covers of adult titles are blurred and marked 18+ in My list and the editor. *Kitsu*: the automatic re-check on manual syncs and previews was replaced by an on-demand button, "I've changed it, check again" (`POST /api/accounts/{id}/recheck-adult`, 10 per hour); the setting is still read at link time and with every full read. The migration clears `last_full_read_at` so the next sync does one full read per account and fills in the adult flags. Not verified: how the blur looks in a browser, and a real sync with the switch on.
-**Failure handling found with a real sync (2026-11-20, backend 502 tests):** Kitsu's full list read timed out after 30 s once adult content was on (bigger lists, slow pages). Reads (GET/HEAD) now wait up to 90 s for an answer and are asked again twice after a network hiccup (timeout, connection error, protocol error; pauses of 2 s and 6 s); writes are never repeated automatically; every attempt counts in the provider request stats. A second bug made that failure leave the run "running": the cleanup read `run.id` after the rollback had expired it (I/O in the wrong place); the id is now read first, and a regression test makes the session expire on rollback like production does (the plain test session did not, which is why the first version of the test passed).
-**Preview from the dashboard (2026-11-20, frontend 69 tests):** "Preview changes" now opens `/preview` inside the app shell (title, back to the dashboard) instead of the setup stepper (`/review`, step 3 of 3, only for the first-time flow). Both screens hold their Apply button while a sync is running and say why.
-**MAL adult flag corrected (2026-11-20):** checked on a real list: MAL marks its hentai titles `nsfw = gray` (897 white, 65 gray, 0 black; all 16 titles with the Hentai genre are gray), so "black only" found none. A MAL title is now adult when `nsfw` is `black` or its genres include `Hentai` (the same line AniList's `isAdult` draws; ecchi-only `gray` titles stay non-adult). The list read also asks for `genres`. Snapshots keep the old flag until the next full read of that account; on the dev database MAL's `last_full_read_at` was cleared by hand. Before launch with real users, a flag-mapping change needs the same reset in a migration.
-**Ignore adult titles on the master list (2026-11-20, migration `b7e2f5a8c316` `users.ignore_adult_titles`, backend 512 tests, frontend 71):** one per-user switch, in Settings → Sync and on Choose master. On: adult titles are dropped from every master read before anything is stored (full and incremental), so they are not in My list and are not copied to any mirror; turning it on deletes the stored adult rows of the master at once, choosing another master clears its adult rows, and turning it off clears `last_full_read_at` so the next read brings them back. A pruning mirror never deletes its own adult titles because of it (`protect_adult` in the planner). Separate from the per-mirror "Don't copy adult titles", which only affects one mirror and keeps the titles in My list. Not shown: how many titles are being ignored (they are dropped before counting).
-**Browser tests (Playwright, 2026-11-20):** `npm run e2e` in `frontend/` runs the real frontend in the installed Google Chrome (no browser download; `@playwright/test` and `@axe-core/playwright` are dev dependencies) against `backend/e2e/server.py`: the real app on its own database (`anisync_e2e`, rebuilt at every start), the three providers keeping their real names, colours and settings but with in-memory fake clients, and `/__e2e/*` routes to create a signed-in user with lists, slow the fake writes down, and read back what a sync left. Four projects: desktop and phone (Pixel 7), each in light and dark. Specs: admin Titles (conflicts tab, decision, report download), landing (poster wall drifts, stops for reduced motion), setup flow end to end (mirror ends up matching), My list (editor in view, bottom sheet on phones, adult covers blurred), sync running (button and preview held), layout (no page scrolls sideways) and accessibility (axe, serious and critical, light and dark). Provider images and Google Fonts are stubbed; nothing leaves the machine. Not covered: real OAuth sign-in pages, real provider behaviour. 13 tests per project, 52 runs in about 4 minutes. Checked that they can fail: five deliberate breaks (a page wider than the phone, the editor losing its pin, low-contrast text, the adult blur removed, Apply not held during a sync) each failed a test. That check found a weak test: the sync-running spec asserted a disabled button before the preview had loaded, so it passed with the rule removed; it now waits for the preview. No serious accessibility finding on any page in light or dark.
-**Kitsu at 2000+ entries (2026-11-20, backend 520 tests):** measured on a real 976-entry list: a full read costs about 15 ms per entry whatever the page size (500 entries = 7 s and 2 MB; 100 = 1 s), so reading scales linearly (about 30 s for 2000, 75 s for 5000) and what hurts is one big request meeting a slow moment. Reads now use pages of 100 (`PAGE_SIZE`) by offset, and a page that still times out after the client's own retries is asked again at half the size from the same place (down to 25), so no work is lost. Creates no longer look the entry up first: a new entry is a single POST (a refusal as "already taken" then finds the entry and updates it, or reports it as hidden), a known entry is a single PATCH, and the entry id Kitsu returns on a create is kept in the snapshot (`save_entry` returns the provider's entry id) so later edits and updates are one request instead of two. Writes are limited by Kitsu's 2 requests per second (our limiter): 2000 new titles take about 17 minutes instead of about 33; progress shows on the dashboard. Not verified: a real list of 2000+ entries (the scaling above is extrapolated from 976). A resumable full read (keeping pages already read when a later one fails) is not built.\n**5.8 frontend tests done 2026-11-19:** Vitest + Testing Library, 45 tests (`npm test`): image host allow-list, relative times, theme, landing (paused provider, maintenance), link lists (Kitsu form errors), choose master, review (loading view, filters, apply once, errors), dashboard (setup redirect, expiry warning, sync), my list (filters, score on the 0-100 scale, undo, remove confirm), settings (name, theme, delete phrase, unlink), admin (permission gating, ban reason, delete confirm, site, provider pause). `fetch` is stubbed per test and an unmatched request fails the test. Six deliberate breaks each failed a test. The tests found a real bug (provider ids flashed in lowercase before names loaded); screens now wait for the providers list.
-*Real-account fixes after the first sync test:* Kitsu's login endpoint returned 403 (bot protection) to the default HTTP User-Agent, now every provider request sends `User-Agent: AniSync/0.1` (`anisync/http.py`); the setup flow now continues until the first applied sync or an explicit skip.
-Settings, profile screens, admin screens, Privacy page, maintenance page, banner, tests (Vitest + a Playwright smoke test).
+Every screen of the canvas is built and runs against the real backend; what remains is listed under "Still open" at
+the end of this section. Test counts at the last update (2026-11-20): backend 532, frontend 80 (Vitest), 15 browser
+tests per screen configuration (Playwright).
 
+### Screens
 
-- [x] **Landing hero: drifting poster wall, built 2026-11-19** (`ui/PosterWall.tsx`, posters in `src/data/posters.json`,
-      refreshed with `node scripts/update-posters.mjs`; 48 popular titles hotlinked from AniList's CDN; design: canvas
-      "1 · Sign in"). The mascot is deferred until a graphic designer delivers one. Full-bleed wall of 15 columns of posters drifting
-      vertically (pure CSS `translateY` keyframes, alternating direction, 150-300 s per loop, posters listed twice for a
-      seamless loop), under a surface-coloured scrim (works in light and dark) with one M3 card (headline, provider
-      chips, sign-in buttons). A few posters carry provider monograms as a sync hint. `prefers-reduced-motion` stops the
-      drift; phone crops to about 3 columns; wall is `aria-hidden`, images `alt=""`, lazy-loaded, about 40 titles.
-      Posters come from a small fixed list we store (cover URLs checked against provider `image_hosts`), so the page
-      works signed out. **Before launch:** add "posters on a public page" to the Phase 6 provider-terms check.
-- [ ] **Profile screens (backend done).** Header avatar (initials tile when `avatar_url` is null) and a Settings "Profile"
-      card: a name field (`PATCH /api/me`, 1-40 chars) and, per linked account, "use this picture"
-      (`PUT /api/me/avatar {account_id}`, reads the provider live; choosing the master again is the "update from master"
-      action, nothing follows a master change by itself) plus "remove" (`DELETE /api/me/avatar`). Add these to the canvas
-      first (Settings, header, admin user detail). Pictures are hotlinked and only stored when https on the provider's
-      `image_hosts`; apply the same check to anime covers. MAL's `picture` field is unverified until a Client ID exists.
+- [x] **5.1 Foundation (2026-11-19).** The canvas stylesheet is the app stylesheet (`src/styles/anisync-m3.css`,
+  `html.as.theme-*`), API client with `useMe`/`useProviders`/`useSite`, router, Vite proxy for `/api` and `/auth`,
+  landing page.
+- [x] **5.2 Setup flow.** Link lists (`/link`: OAuth buttons and the Kitsu password form), Choose master (`/master`:
+  master radio, per-mirror switches), Review first sync (`/review`: dry run with per-mirror tabs, filters, unmatched
+  list, Apply). Setup keeps sending a new user to `/link` until the first applied sync or "Skip for now".
+- [x] **5.3-5.7 Every other screen.** App shell (side rail, bottom bar on phones, site banner), Dashboard, My list
+  with the entry editor (side panel that follows the scroll, bottom sheet on phones, undo, "check master"), Settings,
+  Privacy, maintenance gate, 404, and the admin area under `/admin` (Overview, Syncs and logs, Users and user detail,
+  Titles, Providers and dataset, Banner and maintenance).
+- [x] **Landing hero: drifting poster wall** (`ui/PosterWall.tsx`, posters in `src/data/posters.json`, refreshed with
+  `node scripts/update-posters.mjs`; 48 popular titles hotlinked from AniList's CDN). 15 columns of posters drifting
+  vertically in pure CSS (alternating direction, 150-300 s per loop), under a surface-coloured veil with one M3 card.
+  The veil is lighter in light mode so the posters stay vivid. `prefers-reduced-motion` stops the drift, the wall is
+  `aria-hidden`, images are lazy-loaded. The mascot waits for a graphic designer.
+- [x] **Profile screens.** Header avatar (initials tile without a picture); Settings → Profile: display name,
+  per-account "use this picture" / "update from <provider>", "remove picture". Pictures are hotlinked and only used
+  when https on the provider's `image_hosts`.
+- [x] **Theme.** Material 3 light and dark; the choice is saved per user (`users.theme`, `PATCH /api/me`), mirrored to
+  `localStorage` and applied by an inline script before React loads (no light flash).
+- [x] **Anime covers.** Hotlinked from the provider (never re-hosted), lazy-loaded, placeholder tile when missing or
+  when the host isn't one of the providers'.
+- [x] **`GET /api/providers` consumed** by `useProviders`: names, monograms, sign-in buttons, paused state,
+  adult-content help text. `ui/Provider.tsx` is the one place that maps provider ids to colour classes.
+- [x] **Preview from the dashboard** opens `/preview` inside the app shell instead of the setup stepper; both review
+  screens hold their Apply button while a sync is running and say why.
 
-- [ ] Public pages (landing, about, privacy) prerendered to static HTML at build time for SEO and future ads;
-      the logged-in app stays a plain SPA. No Next.js needed.
-- [ ] Theme: Material 3 light + dark, tokens from the canvas stylesheet.
-      - Logged-in pages: moon/sun icon button at the top right of the top bar toggles light/dark; Settings →
-        Appearance offers Match system / Light / Dark.
-      - Remembered per user: `users.theme` (`system` | `light` | `dark`, default `system`), saved with
-        `PATCH /api/me`, returned by `GET /api/me`, so it follows the user across devices.
-      - Also mirrored to `localStorage` and applied by a tiny inline script in `index.html` before React loads,
-        so there's no light flash on page load. On sign-in the account value wins.
-      - Logged-out pages follow the OS setting (or the last `localStorage` value).
-- [ ] Anime cover images: hotlink the master provider's image URL (AniList `coverImage.large` + `coverImage.color`
-      as the loading tint, MAL `main_picture`, Kitsu `posterImage`); never re-host or edit them (MAL §3(a)(xii)).
-      Store the URLs on `media` during sync; lazy-load; fall back to the placeholder tile.
-- [x] `GET /api/providers` consumed by `useProviders` (names, monograms, sign-in buttons, paused state). The one place that maps provider ids to colour classes is `ui/Provider.tsx`.
-- [ ] Build the canvas screens: Sign in, Link lists, Choose master, Review first sync, Dashboard, My list.
-      API client + types, routes, Vite proxy for `/api` and `/auth`.
+### Tests
+
+- [x] **Vitest + Testing Library** (`npm test`, 80 tests): `fetch` is stubbed per test and an unmatched request fails
+  the test. Covers the image-host allow-list, relative times, theme, landing, the whole setup flow, dashboard, My
+  list, Settings, admin (permissions, ban reason, delete confirm, banner, provider pause, ID conflicts). Deliberate
+  breaks of each rule failed a test.
+- [x] **Playwright** (`npm run e2e`): the real frontend in the installed Chrome (no browser download;
+  `@playwright/test`, `@axe-core/playwright`) against `backend/e2e/server.py`: the real app on its own database
+  (`anisync_e2e`, rebuilt at every start), the three providers with their real names, colours and settings but
+  in-memory fake clients, and `/__e2e/*` routes to create a signed-in user with lists, slow the fake writes down and
+  read back what a sync left. Four configurations: desktop and phone (Pixel 7), each in light and dark; 15 tests each
+  (60 runs, about 5 minutes).
+  - Specs: landing (poster wall drifts and stops for reduced motion), setup flow end to end, My list (editor in view,
+    bottom sheet on phones, adult covers blurred), sync running, admin Titles (conflicts tab, decision, report
+    download), layout (no page scrolls sideways) and accessibility (axe, serious and critical, light and dark).
+    Provider images and Google Fonts are stubbed; nothing leaves the machine.
+  - Checked that they can fail: deliberate breaks (a page wider than the phone, the editor losing its pin,
+    low-contrast text, the adult blur removed, Apply not held during a sync, the conflicts tab hidden) each failed a
+    test. That check found a weak test (a disabled button asserted before the page had loaded); fixed.
+  - Not covered: real OAuth sign-in pages and real provider behaviour.
+
+### Found with real accounts (2026-11-19 and 2026-11-20), all fixed
+
+- **Kitsu's login endpoint answered 403** to the default HTTP User-Agent (bot protection), reported as "wrong
+  credentials". Every provider request now sends `User-Agent: AniSync/0.1` (`anisync/http.py`); a blocked or
+  unreachable provider answers 502, not "rejected those credentials".
+- **One sync at a time.** `sync.start_run` opens a run under a per-user advisory lock and refuses when one is
+  unfinished and under 15 minutes old (`run_sync` answers `skipped`, `POST /api/sync` answers 409). A run that raises
+  is closed as `error` instead of staying "running" forever. The lock itself has no test (it needs two real
+  connections).
+- **Long syncs** (migration `e5b8c2d94f17`: `sync_runs.planned/processed`). A change refused as "rate limited" waits
+  out the provider's retry time (capped at 60 s, up to 3 retries) instead of failing the next dozens; changes are
+  committed in batches of 25 so the dashboard shows "Running · 40 of 300" and an interrupted sync keeps what it wrote;
+  runs that stopped halfway become `interrupted` (all open runs at startup when the worker runs in-process, runs older
+  than 15 minutes in the daily housekeeping). The pacing is tested with fakes only.
+- **Failures.** Provider failures answer 502 ("a list site isn't responding") or 429 (with the provider's name)
+  instead of 500. Reads wait up to 90 s and are asked again twice after a network hiccup (pauses of 2 s and 6 s);
+  writes are never repeated automatically. A cleanup bug (reading `run.id` after the rollback expired it) left runs
+  "running" after a failed read; fixed, with a regression test that makes the session expire on rollback like
+  production (the plain test session doesn't).
+- **Kitsu quirks.** (1) Adult titles are hidden from API listings while the account's SFW filter is on (Settings →
+  Adult Content on Kitsu), so a create answers 422 "already been taken": the change is now *skipped* with the reason
+  (`ChangeSkipped`, `skipped`/`skipped_reason` in the run summary, shown on the dashboard) and the same filter hides
+  those titles from full reads. Skipped changes are planned again at every sync (about 2 requests each); a negative
+  cache would stop that. (2) Kitsu counts fewer episodes than the master for some titles (422 "progress cannot exceed
+  length of media"): progress is capped at Kitsu's `episodeCount` and retried once.
+- **Kitsu at 2000+ entries.** Measured on a real 976-entry list: a full read costs about 15 ms per entry whatever the
+  page size (500 entries = 7 s and 2 MB; 100 = 1 s), so it scales linearly (about 30 s for 2000, 75 s for 5000) and
+  what hurts is one big request meeting a slow moment. Reads use pages of 100 by offset and a page that still times
+  out is asked again at half the size from the same place (down to 25). Creates are one POST (a refusal as "already
+  taken" then finds the entry and updates it, or reports it as hidden), known entries one PATCH, and the entry id
+  Kitsu returns is kept in the snapshot (`save_entry` returns it): 2000 new titles take about 17 minutes instead of 33
+  (Kitsu allows 2 requests per second). Not verified on a list of 2000+; a resumable full read is not built.
+
+### Adult titles (2026-11-19 and 2026-11-20)
+
+- **How each provider treats them**, checked on a real account: MAL leaves them out of the list API unless `nsfw=true`
+  is sent (the client does: 897 vs 962 entries); AniList returns them to the owner even with "Display adult content"
+  off (957 entries, 26 adult); Kitsu hides them while the account's SFW filter is on.
+- **Telling the user (Kitsu).** The filter is read from the profile at link time and at every full read; the notice
+  (link page, dashboard, Settings, Choose master) names the provider's own instructions (`Provider.adult_help`) and
+  has "I've changed it, check again" (`POST /api/accounts/{id}/recheck-adult`, 10 per hour) instead of an automatic
+  re-check on every sync. A master that hides titles never causes deletions on the mirrors, because hidden is not the
+  same as removed (migration `f7c3d9a2e158`).
+- **Per-title flag** (migration `a1d4e7c3b952`), read with each list and stored on the snapshot: MAL when `nsfw` is
+  `black` or the genres include Hentai (MAL marks hentai `gray`, together with plain ecchi, so "black only" found
+  none: corrected 2026-11-20), AniList `isAdult`, Kitsu `nsfw`.
+- **Per mirror:** "Don't copy adult titles" (`linked_accounts.skip_adult`): adult titles are neither created nor
+  updated there, are counted as `adult_skipped`, are not listed as unmatched, the mirror's own copy is never deleted
+  by it, and edit pushes respect it.
+- **Per user:** "Show covers of adult titles" (`users.show_adult_covers`, off by default): covers are blurred and
+  marked 18+ in My list and the editor.
+- **Per user, master list:** "Ignore adult titles on my master list" (`users.ignore_adult_titles`, migration
+  `b7e2f5a8c316`): adult titles are dropped from every master read before anything is stored, so they are not in My
+  list and not copied to any mirror; turning it on deletes the stored adult rows at once, choosing another master
+  clears its adult rows, turning it off clears `last_full_read_at` so the next read brings them back; a pruning mirror
+  never deletes its own adult titles because of it. Not shown: how many titles are ignored.
+- A change of how the flag is computed leaves old snapshots unchanged until the next full read of that account (the
+  dev database was reset by hand); before launch with real users such a change needs the reset in a migration.
+
+### Still open
+
+- [ ] Public pages (landing, about, privacy) prerendered to static HTML at build time for SEO and future ads; the
+  logged-in app stays a plain SPA. No Next.js needed.
+- [ ] "Add anime" on My list: needs a title-search endpoint that doesn't exist.
+- [ ] Donation card in Settings: no platform chosen yet.
+- [ ] A chart on the admin overview (a table for now).
+- [ ] Resumable Kitsu full read, and a negative cache for titles that Kitsu hides.
+- [ ] Not verified: phone layouts and light mode by eye (the browser tests cover them mechanically); a real list of
+  2000+ entries (Phase 6); writes to MAL as a *mirror* (MAL has only been the master so far).
 
 ## Phase 6: Real-world test and deploy
 
@@ -374,7 +439,22 @@ Settings, profile screens, admin screens, Privacy page, maintenance page, banner
       site): time of the first full sync, Kitsu paging (pages of 100, shrinking to 25 after timeouts) against a slow
       Kitsu, AniList's single-query read and MAL's pages of 1000 at that size, rate limits (AniList got throttled
       hard on the first real sync), and the dashboard progress. Measured so far only on a 976-entry list.
-- [x] **ID conflicts (found on the first real sync, 2026-11-20; recorded and reviewable 2026-11-20, migration `c2e9a4f6d871` `id_conflicts`, backend 532 tests, frontend 76).** The mapper used to log "already has ... ID" / "not merging media ... they disagree" at every full read when a title's cross-references from a list read (Kitsu's own `mappings`) disagreed with the offline dataset. Four cases looked at: all were Kitsu's cross-references pointing at a different AniList or MAL title than the dataset (e.g. Natsume Yuujinchou Shichi listed with the AniList id of Roku); the dataset was right, and the rule "dataset wins, never merge, never overwrite" handled them safely. Now each conflict is stored once (kind `already_has` or `disagree`, the claimed ids, the media involved, how often it came up, first and last seen), logged only the first time, and shown in Admin → Titles → "ID conflicts" with the titles, links to each provider's page to check the claim (https only), a note, "Keep the dataset's answer" / "Reopen", filters, and **Download report (CSV)** (formula-safe cells; each decision and each download is in the audit trail; permission `titles.link`). A kept conflict stays kept when seen again. Nothing about the mapping changes from a decision; overriding an id is still done with the manual link tool. The Titles page has two tabs at the top with their counts ("Unmatched titles", "ID conflicts", address `?tab=conflicts`): the first version put the conflicts card below the whole unmatched list, where it was easy to miss. **Next (item 3, later):** use the report to tell the dataset project and Kitsu about confirmed errors.
+- [x] **ID conflicts** (found on the first real sync, 2026-11-20; recorded and reviewable the same day; migration
+  `c2e9a4f6d871` `id_conflicts`; backend 532 tests).
+  - The mapper used to log "already has ... ID" / "not merging media ... they disagree" at every full read when a
+    title's cross-references from a list read (Kitsu's own `mappings`) disagreed with the offline dataset. Four cases
+    looked at: all were Kitsu's cross-references pointing at a different AniList or MAL title than the dataset (e.g.
+    Natsume Yuujinchou Shichi listed with the AniList id of Roku). The dataset was right, and the rule "dataset wins,
+    never merge, never overwrite" handled them safely.
+  - Now each conflict is stored once (kind `already_has` or `disagree`, the claimed ids, the media involved, how often
+    it came up, first and last seen) and logged only the first time.
+  - Admin → Titles → "ID conflicts" tab (counts on the tabs, address `?tab=conflicts`): the titles, a link to each
+    provider's page to check the claim (https only), a note, "Keep the dataset's answer" / "Reopen", filters, and
+    **Download report (CSV)** with formula-safe cells. Each decision and each download is in the audit trail
+    (permission `titles.link`). A kept conflict stays kept when seen again. A decision changes nothing about the
+    mapping; overriding an id is still done with the manual link tool.
+  - The first version put the card below the whole unmatched list, where it was easy to miss; hence the tabs.
+  - **Next (item 3, later):** use the report to tell the dataset project and Kitsu about confirmed errors.
 
 - [ ] Dockerfile; Railway (or Cloudflare Pages + Neon + Render) config; production `PUBLIC_URL`, secure cookies,
       secrets in the host's secret store.
