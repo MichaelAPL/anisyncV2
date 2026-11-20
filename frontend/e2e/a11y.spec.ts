@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import type { Page } from '@playwright/test'
-import { entries, expect, finishSetup, reset, seed, signIn, test } from './support'
+import { entries, expect, finishSetup, reset, seed, seedConflicts, signIn, test } from './support'
 
 test.beforeEach(async ({ request }) => reset(request))
 
@@ -32,8 +32,9 @@ test('signed-in pages have no serious accessibility problems', async ({ page, co
   })
   await signIn(context, token)
   await finishSetup(page)
+  await seedConflicts(request)
   const found: string[] = []
-  for (const path of ['/dashboard', '/list', '/settings', '/preview', '/link', '/admin', '/admin/users', '/admin/site']) {
+  for (const path of ['/dashboard', '/list', '/settings', '/preview', '/link', '/admin', '/admin/users', '/admin/titles', '/admin/site']) {
     await page.goto(path)
     found.push(...(await violations(page)).map((v) => `${path}: ${v}`))
   }

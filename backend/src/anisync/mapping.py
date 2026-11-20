@@ -22,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from anisync import conflicts
 from anisync.http import client as http_client
 from anisync.models import LookupMiss, Media, MediaExternalId
 from anisync.providers import get_provider, is_registered
@@ -122,14 +123,22 @@ class IdMapper:
                 continue  # steady state: nothing new to learn
             try:
                 async with self.session.begin_nested():
-                    await self._store(t, known)
+                    found = await self._store(t, known)
+                for conflict in found:
+                    await self._note(conflict)
             except IntegrityError:
                 # Another worker stored the same IDs at the same time; theirs is as good as ours.
                 log.info("concurrent insert while learning %s; skipping", dict(t.ids))
                 for pair in t.ids.items():
                     known.pop(pair, None)
 
-    async def _store(self, t: KnownTitle, known: dict[tuple[str, str], int]) -> None:
+    async def _note(self, conflict: conflicts.Conflict) -> None:
+        """Remember a conflict; it is logged only the first time (it comes up again at every full read)."""
+        async with self.session.begin_nested():
+            new = await conflicts.record(self.session, conflict)
+        (log.warning if new else log.debug)("id conflict: %s", conflict.detail)
+
+    async def _store(self, t: KnownTitle, known: dict[tuple[str, str], int]) -> list[conflicts.Conflict]:
         media_ids = sorted({known[pair] for pair in t.ids.items() if pair in known})
         if not media_ids:
             media = Media(title=t.title, episodes=t.episodes, cover_url=t.cover_url)
@@ -140,8 +149,14 @@ class IdMapper:
             media_id = media_ids[0]
             if len(media_ids) > 1:
                 if not await self._merge(media_ids):
-                    log.warning("not merging media %s: they disagree on a provider's ID (%s)", media_ids, dict(t.ids))
-                    return
+                    return [
+                        conflicts.Conflict(
+                            "disagree",
+                            t.ids,
+                            media_ids,
+                            f"not merging media {media_ids}: they disagree on a provider's ID ({dict(t.ids)})",
+                        )
+                    ]
                 for pair, m in list(known.items()):
                     if m in media_ids[1:]:
                         known[pair] = media_id
@@ -158,11 +173,17 @@ class IdMapper:
                 )
             )
         }
+        found: list[conflicts.Conflict] = []
         for provider, external_id in t.ids.items():
             if provider in owned:
                 if owned[provider] != external_id:
-                    log.warning(
-                        "media %s already has %s ID %s; ignoring %s", media_id, provider, owned[provider], external_id
+                    found.append(
+                        conflicts.Conflict(
+                            "already_has",
+                            t.ids,
+                            [media_id],
+                            f"media {media_id} already has {provider} ID {owned[provider]}; ignoring {external_id}",
+                        )
                     )
                 continue
             self.session.add(
@@ -170,6 +191,7 @@ class IdMapper:
             )
             known[(provider, external_id)] = media_id
         await self.session.flush()
+        return found
 
     async def _merge(self, media_ids: list[int]) -> bool:
         """Merge media rows that turned out to be the same title into the first one. False = they conflict."""

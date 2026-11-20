@@ -52,6 +52,21 @@ export interface UserDetail {
   accounts: AdminAccount[]; recent_runs: Run[]; actions: AdminAction[]
 }
 export interface Unmatched { source: string; source_id: string; target: string; title: string; users: number; first_seen_at: string; last_seen_at: string }
+export interface Conflict {
+  id: number
+  kind: 'already_has' | 'disagree'
+  detail: string
+  ids: Record<string, string>
+  links: Record<string, string>
+  titles: string[]
+  seen: number
+  first_seen_at: string
+  last_seen_at: string
+  status: 'open' | 'kept'
+  note: string | null
+  resolved_at: string | null
+}
+export interface Conflicts { counts: { open: number; kept: number }; items: Conflict[] }
 export interface ProviderHealth {
   id: string; name: string; paused: boolean; paused_reason: string | null; changed_at: string | null; accounts: number
   today: Requests; last_7d: Requests

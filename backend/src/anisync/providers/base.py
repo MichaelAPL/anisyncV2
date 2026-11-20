@@ -194,6 +194,8 @@ class Provider:
     media_types: tuple[str, ...] = ("anime",)
     # Extracts this provider's title ID from a URL on its website (used to import offline ID datasets).
     url_pattern: re.Pattern[str] | None = None
+    # The title's page on the provider's site, `{id}` being its title id (for admins checking or reporting a mapping).
+    title_url: str | None = None
     # Provider IDs whose title IDs this provider's client can translate (`ProviderClient.lookup_external_ids`).
     lookup_from: frozenset[str] = frozenset()
     # `fetch_list(since=...)` returns only entries changed after `since` (newest first, stopping early), which makes

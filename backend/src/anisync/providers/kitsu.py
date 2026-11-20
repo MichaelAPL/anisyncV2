@@ -285,6 +285,7 @@ PROVIDER = register(
         rate_limit=(2, 1),
         client=KitsuClient,
         url_pattern=re.compile(r"^https?://kitsu\.(?:app|io)/anime/(\d+)"),
+        title_url="https://kitsu.app/anime/{id}",
         lookup_from=frozenset({"mal", "anilist"}),
         password_login=password_login,
         refresh=refresh,

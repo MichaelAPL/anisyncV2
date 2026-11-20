@@ -24,6 +24,8 @@ export const useJobs = (status?: string) => useGet<T.Job[]>(['jobs', status], `/
 export const useUsers = (f: { q?: string; banned?: boolean }) => useGet<T.UserRow[]>(['users', f], `/api/admin/users${qs({ ...f, limit: 30 })}`)
 export const useUser = (id: number) => useGet<T.UserDetail>(['user', id], `/api/admin/users/${id}`)
 export const useUnmatched = (f: { q?: string; target?: string }) => useGet<T.Unmatched[]>(['unmatched', f], `/api/admin/titles/unmatched${qs({ ...f, limit: 50 })}`)
+export const useConflicts = (status: 'open' | 'kept' | 'all') =>
+  useGet<T.Conflicts>(['conflicts', status], `/api/admin/titles/conflicts${qs({ status })}`)
 export const useProviderHealth = () => useGet<T.ProviderHealth[]>(['providers'], '/api/admin/providers')
 export const useDataset = () => useGet<T.Dataset>(['dataset'], '/api/admin/dataset')
 export const useAdminSite = () => useGet<T.AdminSite>(['site'], '/api/admin/site')

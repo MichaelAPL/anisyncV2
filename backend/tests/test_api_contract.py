@@ -76,6 +76,8 @@ def test_every_route_declares_what_it_returns():
         for r in API_ROUTES
         if r.response_model is None
         and not (inspect.isclass(r.response_class) and issubclass(r.response_class, RedirectResponse))
+        # A spreadsheet download is allowed to have no JSON schema: its rows come from a schema-checked model.
+        and getattr(r.response_class, "media_type", None) != "text/csv"
     ]
     assert not undeclared, f"routes without a response schema: {undeclared}"
 

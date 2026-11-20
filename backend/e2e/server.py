@@ -198,6 +198,18 @@ class Config_(BaseModel):
     save_delay: float = 0.0
 
 
+@router.post("/conflicts")
+async def conflicts() -> dict:
+    """Two ID conflicts for the admin screen: the dataset's id differs from a hint, and two titles claimed to be one."""
+    async with SessionLocal() as session, IdMapper(session) as mapper:
+        await mapper.remember({"mal": "m1", "kitsu": "k1"}, title="Conflict Alpha")
+        await mapper.remember({"mal": "m2", "kitsu": "k2"}, title="Conflict Beta")
+        await mapper.remember({"mal": "m1", "kitsu": "k9"})
+        await mapper.remember({"mal": "m1", "kitsu": "k2"})
+        await session.commit()
+    return {"ok": True}
+
+
 @router.post("/config")
 async def configure(body: Config_) -> dict:
     Config.save_delay = body.save_delay

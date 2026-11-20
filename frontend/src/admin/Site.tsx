@@ -5,8 +5,8 @@ import { relative } from '../format'
 import { AdminTop } from './AdminShell'
 import { can, useAdmin, useProviderName } from './util'
 import { Card, Err, Loading, Stat } from './bits'
-import { post, put, useAct, useAdminSite, useDataset, useProviderHealth, useUnmatched } from './hooks'
-import type { AdminSite, ProviderHealth } from './types'
+import { post, put, useAct, useAdminSite, useConflicts, useDataset, useProviderHealth, useUnmatched } from './hooks'
+import type { AdminSite, Conflict, ProviderHealth } from './types'
 
 function SiteForm({ site }: { site: AdminSite }) {
   const [text, setText] = useState(site.banner_text ?? '')
@@ -95,6 +95,74 @@ export function Providers() {
   )
 }
 
+const KIND: Record<Conflict['kind'], string> = {
+  already_has: 'Another ID for a title the dataset already knows',
+  disagree: 'IDs that the dataset keeps on different titles',
+}
+
+function ConflictRow({ c }: { c: Conflict }) {
+  const name = useProviderName()
+  const [note, setNote] = useState(c.note ?? '')
+  const decide = useAct((status: 'open' | 'kept') => put(`/api/admin/titles/conflicts/${c.id}`, { status, note: note.trim() || null }))
+  const kept = c.status === 'kept'
+  return (
+    <div className="list-item" style={{ flexWrap: 'wrap', gap: '8px 16px', alignItems: 'flex-start' }}>
+      <div className="list-text" style={{ flex: '1 1 320px' }}>
+        <span className="title-m">{c.titles.join(' · ') || 'Unknown title'}</span>
+        <span className="body-m muted">{KIND[c.kind]} · seen {c.seen} {c.seen === 1 ? 'time' : 'times'}, last {relative(c.last_seen_at)}</span>
+        <span className="body-m" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
+          {Object.entries(c.ids).map(([provider, id]) => {
+            const link = c.links[provider]
+            return link?.startsWith('https://') ? (
+              <a key={provider} href={link} target="_blank" rel="noopener noreferrer">{name(provider)} {id}</a>
+            ) : (
+              <span key={provider}>{name(provider)} {id}</span>
+            )
+          })}
+        </span>
+        <span className="body-s muted">{c.detail}</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div className="field" style={{ width: 220 }}>
+          <label htmlFor={`note-${c.id}`}>Note</label>
+          <input id={`note-${c.id}`} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
+        </div>
+        {kept ? (
+          <button type="button" className="btn btn-text" style={{ minHeight: 56 }} disabled={decide.isPending} onClick={() => decide.mutate('open')}>Reopen</button>
+        ) : (
+          <button type="button" className="btn btn-tonal" style={{ minHeight: 56 }} disabled={decide.isPending} onClick={() => decide.mutate('kept')}>
+            Keep the dataset's answer
+          </button>
+        )}
+      </div>
+      <Err error={decide.error} />
+    </div>
+  )
+}
+
+function Conflicts() {
+  const [status, setStatus] = useState<'open' | 'kept' | 'all'>('open')
+  const list = useConflicts(status)
+  const counts = list.data?.counts
+  return (
+    <Card
+      id="conflicts-h"
+      title="ID conflicts"
+      sub="Cross-references from list reads that disagree with the ID dataset. The dataset's answer is used meanwhile and nothing is merged."
+      right={<a className="btn btn-tonal" href={`/api/admin/titles/conflicts/report.csv?status=${status}`} download>Download report (CSV)</a>}
+    >
+      <div className="chip-row" role="group" aria-label="Show" style={{ padding: '0 16px 8px' }}>
+        {([['open', `Open ${counts?.open ?? 0}`], ['kept', `Kept ${counts?.kept ?? 0}`], ['all', 'All']] as const).map(([v, label]) => (
+          <button key={v} type="button" className={`chip${status === v ? ' chip-on' : ''}`} aria-pressed={status === v} onClick={() => setStatus(v)}>{label}</button>
+        ))}
+      </div>
+      <Loading q={list} />
+      <div className="list">{list.data?.items.map((c) => <ConflictRow key={`${c.id}-${c.status}`} c={c} />)}</div>
+      {list.data?.items.length === 0 && <p className="body-m muted" style={{ padding: 16 }}>No conflicts here.</p>}
+    </Card>
+  )
+}
+
 export function Titles() {
   const [q, setQ] = useState('')
   const list = useUnmatched({ q: q.trim() || undefined })
@@ -128,6 +196,7 @@ export function Titles() {
           {list.data?.length === 0 && <p className="body-m muted" style={{ padding: 16 }}>Nothing unmatched.</p>}
         </section>
         {link.error instanceof ApiError ? <p className="body-m" role="alert" style={{ color: 'var(--error)' }}>{link.error.message}</p> : <Err error={link.error} />}
+        {canLink && <Conflicts />}
       </main>
     </>
   )

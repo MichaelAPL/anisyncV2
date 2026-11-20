@@ -1,4 +1,4 @@
-import { entries, expect, finishSetup, overflowsHorizontally, reset, seed, signIn, test } from './support'
+import { entries, expect, finishSetup, overflowsHorizontally, reset, seed, seedConflicts, signIn, test } from './support'
 
 test.beforeEach(async ({ request }) => reset(request))
 
@@ -15,6 +15,7 @@ test('no page scrolls sideways on this screen', async ({ page, context, request 
   })
   await signIn(context, token)
   await finishSetup(page)
+  await seedConflicts(request)
   const problems: string[] = []
   for (const path of [...PUBLIC_PAGES, ...USER_PAGES, ...ADMIN_PAGES]) {
     await page.goto(path)

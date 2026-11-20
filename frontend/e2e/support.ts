@@ -45,6 +45,11 @@ export async function signIn(context: BrowserContext, token: string) {
   await context.addCookies([{ name: 'anisync_session', value: token, url: WEB }])
 }
 
+/** Two ID conflicts, so the admin screen has something to show. */
+export async function seedConflicts(request: APIRequestContext) {
+  expect((await request.post(`${API}/__e2e/conflicts`)).ok()).toBeTruthy()
+}
+
 export const entries = (count: number, make: (n: number) => Partial<Entry> = () => ({})): Entry[] =>
   Array.from({ length: count }, (_, i) => ({ n: i + 1, title: `Title ${i + 1}`, status: 'watching', progress: i % 12, ...make(i + 1) }))
 

@@ -178,6 +178,7 @@ PROVIDER = register(
         rate_limit=(1, 1),  # MAL doesn't publish limits; ~1 req/s is safe.
         client=MalClient,
         url_pattern=re.compile(r"^https?://myanimelist\.net/anime/(\d+)"),
+        title_url="https://myanimelist.net/anime/{id}",
         authorize_url=authorize_url,
         exchange_code=exchange_code,
         refresh=refresh,

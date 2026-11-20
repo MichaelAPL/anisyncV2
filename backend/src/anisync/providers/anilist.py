@@ -277,6 +277,7 @@ PROVIDER = register(
         rate_limit=(25, 60),  # AniList allows ~90/min but is sometimes degraded to 30/min: stay under that
         client=AniListClient,
         url_pattern=re.compile(r"^https?://anilist\.co/anime/(\d+)"),
+        title_url="https://anilist.co/anime/{id}",
         lookup_from=frozenset({"mal", "anilist"}),
         authorize_url=authorize_url,
         exchange_code=exchange_code,

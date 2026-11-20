@@ -77,3 +77,68 @@ describe('admin area', () => {
     await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ paused: true, reason: 'outage' }))
   })
 })
+
+describe('ID conflicts', () => {
+  const conflict = (over: object = {}) => ({
+    id: 7, kind: 'already_has', detail: 'media 5 already has kitsu ID 1; ignoring 2', ids: { kitsu: '2', mal: '10' },
+    links: { kitsu: 'https://kitsu.app/anime/2', mal: 'https://myanimelist.net/anime/10' }, titles: ['Natsume Yuujinchou Shichi'],
+    seen: 3, first_seen_at: '2026-11-19T00:00:00Z', last_seen_at: new Date().toISOString(), status: 'open', note: null, resolved_at: null, ...over,
+  })
+  const stubs = (items = [conflict()], extra: Record<string, unknown> = {}) => ({
+    'GET /api/admin/titles/unmatched': [],
+    'GET /api/admin/titles/conflicts': { counts: { open: items.length, kept: 0 }, items },
+    ...extra,
+  })
+
+  it('lists what disagrees with the dataset, with links to check each claim', async () => {
+    stubApi(stubs(), { me: admin })
+    renderRoute('/admin/titles')
+    expect(await screen.findByText('Natsume Yuujinchou Shichi')).toBeInTheDocument()
+    expect(screen.getByText(/seen 3 times/i)).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: /kitsu 2/i })
+    expect(link).toHaveAttribute('href', 'https://kitsu.app/anime/2')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
+    expect(screen.getByRole('link', { name: /download report/i })).toHaveAttribute('href', '/api/admin/titles/conflicts/report.csv?status=open')
+  })
+
+  it('only links to https pages', async () => {
+    stubApi(stubs([conflict({ links: { kitsu: 'javascript:alert(1)', mal: 'http://myanimelist.net/anime/10' } })]), { me: admin })
+    renderRoute('/admin/titles')
+    await screen.findByText('Natsume Yuujinchou Shichi')
+    expect(screen.queryByRole('link', { name: /kitsu 2/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /myanimelist 10/i })).toBeNull()
+    expect(screen.getByText(/kitsu 2/i)).toBeInTheDocument()
+  })
+
+  it('keeps the dataset answer with a note, and can reopen it', async () => {
+    const calls = stubApi(stubs([conflict()], { 'PUT /api/admin/titles/conflicts/7': conflict({ status: 'kept' }) }), { me: admin })
+    renderRoute('/admin/titles')
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText('Note'), 'kitsu has the wrong anilist id')
+    await user.click(screen.getByRole('button', { name: /keep the dataset's answer/i }))
+    await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ status: 'kept', note: 'kitsu has the wrong anilist id' }))
+  })
+
+  it('offers to reopen a kept conflict and filters by status', async () => {
+    const calls = stubApi(
+      stubs([conflict({ status: 'kept', note: 'fine' })], { 'PUT /api/admin/titles/conflicts/7': conflict({ status: 'open' }) }),
+      { me: admin },
+    )
+    renderRoute('/admin/titles')
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: /kept 0/i }))
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/admin/titles/conflicts?status=kept')).toBe(true))
+    expect(screen.getByRole('link', { name: /download report/i })).toHaveAttribute('href', expect.stringContaining('status=kept'))
+    await user.click(await screen.findByRole('button', { name: /reopen/i }))
+    await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ status: 'open', note: 'fine' }))
+  })
+
+  it('is not shown to an admin who may not link titles', async () => {
+    const limited = makeMe({ role: 'moderator', permissions: ['users.read', 'titles.link'].filter((p) => p !== 'titles.link') })
+    stubApi({ 'GET /api/admin/titles/unmatched': [] }, { me: limited })
+    renderRoute('/admin/titles')
+    await screen.findByText(/nothing unmatched|unmatched titles/i)
+    expect(screen.queryByText('ID conflicts')).toBeNull()
+  })
+})

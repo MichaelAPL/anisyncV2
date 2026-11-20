@@ -354,6 +354,28 @@ class ProviderSetting(Base):
     changed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
 
+class IdConflict(Base):
+    """Cross-references from a list read that disagree with what the ID dataset says. The dataset's answer wins and the
+    titles are never merged; this table is what an admin reviews (and reports upstream), see `conflicts.py`."""
+
+    __tablename__ = "id_conflicts"
+    __table_args__ = (Index("ix_id_conflicts_status", "status", "last_seen_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(400), unique=True, index=True)  # same conflict = same row
+    kind: Mapped[str] = mapped_column(String(16))  # already_has | disagree
+    ids: Mapped[dict] = mapped_column(JSON)  # what the list read claimed: {provider: that provider's title id}
+    media_ids: Mapped[list] = mapped_column(JSON)  # the media rows involved
+    detail: Mapped[str] = mapped_column(String(500))
+    seen: Mapped[int] = mapped_column(default=1, server_default="1")  # how many times it came up
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    status: Mapped[str] = mapped_column(String(10), default="open", server_default="open")  # open | kept
+    note: Mapped[str | None] = mapped_column(String(500))
+    resolved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class UnmatchedTitle(Base):
     """A title on someone's master list that has no equivalent on a mirror's provider (yet). Admins can link them by
     hand. Rows go away when the title becomes mapped or hasn't been seen for a month."""

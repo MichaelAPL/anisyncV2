@@ -374,14 +374,8 @@ Settings, profile screens, admin screens, Privacy page, maintenance page, banner
       site): time of the first full sync, Kitsu paging (pages of 100, shrinking to 25 after timeouts) against a slow
       Kitsu, AniList's single-query read and MAL's pages of 1000 at that size, rate limits (AniList got throttled
       hard on the first real sync), and the dashboard progress. Measured so far only on a 976-entry list.
-- [ ] **ID conflicts (found on the first real sync, 2026-11-20).** The mapper logs "already has ... ID" / "not merging
-      media ... they disagree" when a title's cross-references from a list read (Kitsu's own `mappings`) disagree with
-      the offline dataset. Looked at four cases: all were Kitsu's cross-references pointing at a different AniList or
-      MAL title than the dataset (e.g. Natsume Yuujinchou Shichi listed with the AniList id of Roku); the dataset was
-      right, and the rule "dataset wins, never merge, never overwrite" handled them safely. Today they exist only as
-      repeating log lines. Wanted: record them in a table (providers' ids, where the hint came from, how often seen),
-      show them in Admin → Titles with "keep the dataset's answer" (remembered, silences the log) and "use the other"
-      (a manual link, which is never overwritten); report confirmed upstream errors to the dataset and to Kitsu.
+- [x] **ID conflicts (found on the first real sync, 2026-11-20; recorded and reviewable 2026-11-20, migration `c2e9a4f6d871` `id_conflicts`, backend 532 tests, frontend 76).** The mapper used to log "already has ... ID" / "not merging media ... they disagree" at every full read when a title's cross-references from a list read (Kitsu's own `mappings`) disagreed with the offline dataset. Four cases looked at: all were Kitsu's cross-references pointing at a different AniList or MAL title than the dataset (e.g. Natsume Yuujinchou Shichi listed with the AniList id of Roku); the dataset was right, and the rule "dataset wins, never merge, never overwrite" handled them safely. Now each conflict is stored once (kind `already_has` or `disagree`, the claimed ids, the media involved, how often it came up, first and last seen), logged only the first time, and shown in Admin → Titles → "ID conflicts" with the titles, links to each provider's page to check the claim (https only), a note, "Keep the dataset's answer" / "Reopen", filters, and **Download report (CSV)** (formula-safe cells; each decision and each download is in the audit trail; permission `titles.link`). A kept conflict stays kept when seen again. Nothing about the mapping changes from a decision; overriding an id is still done with the manual link tool. **Next (item 3, later):** use the report to tell the dataset project and Kitsu about confirmed errors.
+
 - [ ] Dockerfile; Railway (or Cloudflare Pages + Neon + Render) config; production `PUBLIC_URL`, secure cookies,
       secrets in the host's secret store.
 - [ ] Production data protection: Postgres reachable only from the app (private network, no public port), TLS to
