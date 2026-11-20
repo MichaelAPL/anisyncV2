@@ -99,6 +99,13 @@ async def refresh(refresh_token: str) -> TokenSet:
         return _token_set(resp.json())
 
 
+def _is_adult(node: dict) -> bool:
+    """MAL's `nsfw` is not enough: its hentai titles come as `gray` ("maybe"), together with plain ecchi. The Hentai
+    genre is what makes a title adult here (the same line AniList's `isAdult` draws); `black` is adult too."""
+    genres = {g.get("name") for g in node.get("genres") or []}
+    return node.get("nsfw") == "black" or "Hentai" in genres
+
+
 class MalClient(ProviderClient):
     provider_id = "mal"
 
@@ -109,7 +116,7 @@ class MalClient(ProviderClient):
     async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
         entries: list[ListEntry] = []
         url: str | None = f"{API}/users/@me/animelist"
-        params: dict | None = {"fields": "list_status,num_episodes,nsfw", "limit": 1000, "nsfw": "true"}
+        params: dict | None = {"fields": "list_status,num_episodes,nsfw,genres", "limit": 1000, "nsfw": "true"}
         if since is not None:  # newest first, small pages: a list with nothing new costs one tiny request
             params |= {"sort": "list_updated_at", "limit": 100}
         while url:
@@ -126,7 +133,7 @@ class MalClient(ProviderClient):
                         title=node["title"],
                         total_episodes=node.get("num_episodes") or None,
                         image_url=(node.get("main_picture") or {}).get("medium"),
-                        adult=node.get("nsfw") == "black",  # "gray" is borderline (ecchi), not adult
+                        adult=_is_adult(node),
                         status=TO_STATUS[ls["status"]],
                         progress=ls.get("num_episodes_watched", 0),
                         score=(ls.get("score") or 0) * 10 or None,

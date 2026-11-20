@@ -24,16 +24,29 @@ usesfakes = pytest.mark.usefixtures("fakes", "client")
 
 @respx.mock
 async def test_mal_marks_only_explicit_titles_as_adult_and_asks_for_the_field():
-    def node(i, nsfw):
-        return {"node": {"id": i, "title": f"T{i}", "nsfw": nsfw}, "list_status": {"status": "completed"}}
+    def node(i, nsfw, *genres):
+        node = {"id": i, "title": f"T{i}", "nsfw": nsfw, "genres": [{"id": 1, "name": g} for g in genres]}
+        return {"node": node, "list_status": {"status": "completed"}}
 
     route = respx.get(f"{mal.API}/users/@me/animelist").mock(
-        return_value=httpx.Response(200, json={"data": [node(1, "white"), node(2, "gray"), node(3, "black")]})
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    node(1, "white", "Comedy"),
+                    node(2, "gray", "Ecchi"),  # borderline, not adult
+                    node(3, "black"),
+                    node(4, "gray", "Hentai"),  # MAL gives its hentai titles `gray`, with the Hentai genre
+                    node(5, "white", "Hentai"),
+                ]
+            },
+        )
     )
     entries = await mal.MalClient("tok").fetch_list()
-    assert {e.media_id: e.adult for e in entries} == {"1": False, "2": False, "3": True}  # gray is ecchi, not adult
+    assert {e.media_id: e.adult for e in entries} == {"1": False, "2": False, "3": True, "4": True, "5": True}
     params = route.calls.last.request.url.params
-    assert "nsfw" in params["fields"] and params["nsfw"] == "true"  # without nsfw=true MAL leaves adult titles out
+    assert "nsfw" in params["fields"] and "genres" in params["fields"]
+    assert params["nsfw"] == "true"  # without nsfw=true MAL leaves adult titles out of the list altogether
 
 
 def test_anilist_reads_is_adult_in_both_queries():
