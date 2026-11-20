@@ -65,6 +65,30 @@ describe('dashboard', () => {
     expect(screen.queryByText(/failed/)).toBeNull()
   })
 
+  it('tells the user when a mirror hides adult titles and what to change in that provider', async () => {
+    const me = makeMe({ accounts: [account(1, 'anilist', { is_master: true }), account(3, 'kitsu', { hides_adult: true })] })
+    stubApi({ 'GET /api/sync/runs': [] }, { me })
+    renderRoute('/dashboard')
+    const note = await screen.findByRole('note')
+    expect(note).toHaveTextContent('Kitsu is hiding adult titles from AniSync.')
+    expect(note).toHaveTextContent('In Kitsu, open Settings → Adult Content and allow adult titles')
+    expect(note).toHaveTextContent('Until then they are skipped.')
+  })
+
+  it('says a master that hides adult titles will never cause removals', async () => {
+    const me = makeMe({ master_account_id: 3, accounts: [account(3, 'kitsu', { is_master: true, hides_adult: true }), account(1, 'anilist')] })
+    stubApi({ 'GET /api/sync/runs': [] }, { me })
+    renderRoute('/dashboard')
+    expect(await screen.findByRole('note')).toHaveTextContent(/never remove anything from your other lists/i)
+  })
+
+  it('shows no adult-content notice when nothing is hidden', async () => {
+    stubApi({ 'GET /api/sync/runs': [] })
+    renderRoute('/dashboard')
+    await screen.findByRole('heading', { name: 'Dashboard' })
+    expect(screen.queryByRole('note')).toBeNull()
+  })
+
   it('shows how far a running sync has got', async () => {
     const running = [{ id: 1, trigger: 'manual', status: 'running', started_at: new Date(Date.now() - 60_000).toISOString(), finished_at: null, summary: {}, planned: 300, processed: 40 }]
     stubApi({ 'GET /api/sync/runs': running })
@@ -174,6 +198,13 @@ describe('my list', () => {
 })
 
 describe('settings', () => {
+  it('shows the adult-content notice next to the account that hides titles', async () => {
+    const me = makeMe({ accounts: [account(1, 'anilist', { is_master: true }), account(3, 'kitsu', { hides_adult: true })] })
+    stubApi({ 'GET /api/sessions': [] }, { me })
+    renderRoute('/settings')
+    expect(await screen.findByRole('note')).toHaveTextContent('Kitsu is hiding adult titles from AniSync.')
+  })
+
   const sessions = [{ id: 1, created_at: 'x', last_seen_at: new Date().toISOString(), user_agent: 'Firefox', current: true }, { id: 2, created_at: 'x', last_seen_at: new Date().toISOString(), user_agent: 'Phone', current: false }]
 
   it('saves the display name', async () => {

@@ -6,6 +6,7 @@ import type { Account, Me, MirrorResult, SyncRun } from '../api/types'
 import { clock, isRunning, relative, utcHour } from '../format'
 import { Icon } from '../ui/Icon'
 import { ProviderChip } from '../ui/Provider'
+import { AdultNotice } from '../ui/AdultNotice'
 import { Loading } from '../ui/Loading'
 import { Topbar } from '../ui/Shell'
 
@@ -94,6 +95,7 @@ export function Dashboard() {
             </div>
           </section>
         )}
+        {master && <AdultNotice account={master} master />}
         {start.isError && (
           <p className="body-m" role="alert" style={{ color: 'var(--error)' }}>
             {start.error instanceof ApiError ? start.error.message : "Couldn't start the sync. Try again."}
@@ -122,6 +124,7 @@ export function Dashboard() {
                     <div><dt className="body-s muted">Last synced</dt><dd className="title-s" style={{ margin: 0 }}>{relative(a.last_synced_at)}</dd></div>
                     <div><dt className="body-s muted">Unmatched titles</dt><dd className="title-s" style={{ margin: 0 }}>{r?.unmapped ?? '–'}</dd></div>
                   </dl>
+                  <AdultNotice account={a} />
                   {!!r?.skipped && (
                     <p className="body-m muted" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                       <Icon name="info" size={18} style={{ flex: 'none', marginTop: 1 }} />

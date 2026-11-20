@@ -4,6 +4,7 @@ import { finishSetup } from '../setup'
 import { ApiError } from '../api/client'
 import { useLinkWithPassword, useProviders } from '../api/hooks'
 import type { Me, ProviderInfo } from '../api/types'
+import { AdultNotice } from '../ui/AdultNotice'
 import { Icon } from '../ui/Icon'
 import { OnboardingLayout, RequireUser, ReturnError } from '../ui/Onboarding'
 import { ProviderChip } from '../ui/Provider'
@@ -73,6 +74,7 @@ function ProviderCard({ provider, me }: { provider: ProviderInfo; me: Me }) {
           <a className="btn btn-tonal" href={`/auth/${provider.id}/login`}><Icon name="link" size={18} /> Connect {provider.name}</a>
         ) : null}
       </div>
+      {account && <AdultNotice account={account} />}
       {form && !provider.paused && <PasswordForm provider={provider} />}
     </section>
   )

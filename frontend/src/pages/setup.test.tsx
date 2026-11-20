@@ -35,6 +35,13 @@ describe('link lists', () => {
     expect(screen.getByLabelText(/^password$/i)).toHaveValue('hunter2') // a failed attempt keeps the form as it was
   })
 
+  it('warns on the link page when a linked Kitsu account hides adult titles', async () => {
+    const me = makeMe({ accounts: [account(1, 'anilist', { is_master: true }), account(3, 'kitsu', { hides_adult: true })] })
+    stubApi({}, { me })
+    renderRoute('/link')
+    expect(await screen.findByRole('note')).toHaveTextContent(/Settings → Adult Content/)
+  })
+
   it('shows what went wrong when an OAuth round trip comes back with an error', async () => {
     stubApi({}, { me: oneAccount })
     renderRoute('/link?error=account_already_linked')

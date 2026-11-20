@@ -10,6 +10,7 @@ export interface Account {
   needs_relink: boolean
   expires_soon: boolean
   avatar_url: string | null
+  hides_adult: boolean
 }
 
 export interface Me {
@@ -34,6 +35,7 @@ export interface ProviderInfo {
   can_sign_in: boolean
   paused: boolean
   paused_reason: string | null
+  adult_help: string | null
 }
 
 export interface Site {

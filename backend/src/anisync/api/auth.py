@@ -194,6 +194,7 @@ async def _link_account(session: Session, user: User | None, provider: Provider,
 
     account.remote_username = remote.username
     account.avatar_url = provider.safe_image_url(remote.avatar_url)
+    account.hides_adult = remote.hides_adult
     account.access_token = tokens.access_token
     account.refresh_token = tokens.refresh_token
     account.expires_at = tokens.expires_at

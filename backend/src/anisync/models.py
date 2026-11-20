@@ -89,6 +89,8 @@ class LinkedAccount(Base):
     _access_token: Mapped[str] = mapped_column("access_token", Text)
     _refresh_token: Mapped[str | None] = mapped_column("refresh_token", Text)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The account's own setting hides adult titles from other apps, so what we read is incomplete (Provider.adult_help).
+    hides_adult: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Mirror-only settings.
     sync_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     # Remove entries from this mirror that are not on the master list.

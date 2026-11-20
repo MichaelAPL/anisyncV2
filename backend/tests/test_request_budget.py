@@ -37,6 +37,11 @@ class Providers:
         router.post(anilist.GRAPHQL_URL).mock(side_effect=self.anilist)
         router.get(f"{kitsu.API}/library-entries").mock(side_effect=self.kitsu_entries)
         router.get(f"{kitsu.API}/mappings").mock(side_effect=self.kitsu_mapping)
+        router.get(f"{kitsu.API}/users").mock(
+            return_value=httpx.Response(
+                200, json={"data": [{"id": "55", "attributes": {"name": "k", "sfwFilter": False}}]}
+            )
+        )
         router.post(f"{kitsu.API}/library-entries").mock(return_value=httpx.Response(201, json={}))
         router.patch(url__regex=rf"{mal.API}/anime/\d+/my_list_status").mock(return_value=httpx.Response(200, json={}))
 

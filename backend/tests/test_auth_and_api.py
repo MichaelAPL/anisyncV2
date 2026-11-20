@@ -101,6 +101,22 @@ async def test_password_providers_link_after_signing_in(client):
     assert [(a["provider"], a["is_master"]) for a in accounts] == [("mal", True), ("kitsu", False)]
 
 
+async def test_linking_kitsu_records_whether_it_hides_adult_titles(client):
+    await sign_in_with_mal(client)
+    with respx.mock:
+        respx.post(kitsu.TOKEN_URL).mock(
+            return_value=httpx.Response(200, json={"access_token": "k", "refresh_token": "r"})
+        )
+        respx.get(f"{kitsu.API}/users").mock(
+            return_value=httpx.Response(
+                200, json={"data": [{"id": "55", "attributes": {"name": "kaito", "sfwFilter": True}}]}
+            )
+        )
+        await client.post("/auth/kitsu/password", json={"username": "kaito@example.com", "password": "pw"})
+    flags = {a["provider"]: a["hides_adult"] for a in (await client.get("/api/me")).json()["accounts"]}
+    assert flags == {"mal": False, "kitsu": True}
+
+
 async def test_rejected_credentials_are_reported_without_leaking_details(client):
     await sign_in_with_mal(client)
     with respx.mock:

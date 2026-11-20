@@ -40,6 +40,7 @@ class AccountOut(BaseModel):
     needs_relink: bool  # the connection expired and can't be renewed: the user must link it again
     expires_soon: bool  # it can't be renewed and expires within 30 days (the UI warns before it does)
     avatar_url: str | None  # this account's picture as last seen, for the "use this picture" choice
+    hides_adult: bool  # the account hides adult titles from other apps: tell the user (see ProviderOut.adult_help)
 
 
 class MeOut(BaseModel):
@@ -79,6 +80,7 @@ def _me(user: User) -> MeOut:
                 needs_relink=a.needs_relink(),
                 expires_soon=a.expires_soon(),
                 avatar_url=a.avatar_url,
+                hides_adult=a.hides_adult,
             )
             for a in sorted(user.accounts, key=lambda a: a.id)
         ],

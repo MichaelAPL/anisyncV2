@@ -90,6 +90,7 @@ class RemoteUser:
     id: str
     username: str
     avatar_url: str | None = None  # the provider's profile picture, if the user has one
+    hides_adult: bool = False  # the account's own setting hides adult titles from other apps (so lists look shorter)
 
 
 def error_detail(resp: httpx.Response) -> str | None:
@@ -190,6 +191,8 @@ class Provider:
     # Domains (and their subdomains) the provider serves user-facing images from. Only https URLs on these are stored
     # and shown, so a stored URL can't point anywhere else.
     image_hosts: tuple[str, ...] = ()
+    # For providers whose accounts can hide adult titles from other apps: what the user has to change. None = never.
+    adult_help: str | None = None
     # Auth hooks; which ones are set follows from `auth_kind`. No `refresh` means tokens can't be renewed.
     authorize_url: AuthorizeUrl | None = None
     exchange_code: ExchangeCode | None = None

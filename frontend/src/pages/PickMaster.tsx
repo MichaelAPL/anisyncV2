@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router'
 import { usePatchAccount, useProviders, useSetMaster } from '../api/hooks'
 import type { Account, Me } from '../api/types'
+import { AdultNotice } from '../ui/AdultNotice'
 import { Icon } from '../ui/Icon'
 import { OnboardingLayout, RequireUser } from '../ui/Onboarding'
 import { ProviderChip } from '../ui/Provider'
@@ -70,6 +71,7 @@ function Body({ me }: { me: Me }) {
           )
         })}
       </fieldset>
+      {me.accounts.filter((a) => a.hides_adult).map((a) => <AdultNotice key={a.id} account={a} master={a.is_master} />)}
       {setMaster.isError && <p className="body-m" role="alert" style={{ color: 'var(--error)' }}>Couldn't change the master list. Try again.</p>}
       <section className="card-out" style={{ overflow: 'hidden' }}>
         <h2 className="title-m" style={{ padding: '16px 16px 4px' }}>Mirrors</h2>

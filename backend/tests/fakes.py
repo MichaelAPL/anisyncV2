@@ -76,6 +76,7 @@ class FakeClient(ProviderClient):
     FAIL_ON: ClassVar[set[str]] = set()  # media ids whose save raises
     REJECT_TOKENS: ClassVar[bool] = False  # simulate a revoked token
     RATE_LIMITED: ClassVar[dict[str, int]] = {}  # media id -> how many saves are refused with 'retry after 30s'
+    HIDES_ADULT: ClassVar[set[str]] = set()  # provider ids whose account hides adult titles from other apps
     SKIP_ON: ClassVar[set[str]] = set()  # media ids the provider hides from us (saves are skipped, not failed)
     REAUTH_ON: ClassVar[str | None] = None  # media id whose save says the token was revoked
     FETCH_ERROR: ClassVar[Exception | None] = None  # raised by every list read (an outage, a timeout)
@@ -98,6 +99,7 @@ class FakeClient(ProviderClient):
             id=self.remote_user_id or "1",
             username=f"{self.provider_id}_user",
             avatar_url=FakeClient.AVATARS.get(self.provider_id),
+            hides_adult=self.provider_id in FakeClient.HIDES_ADULT,
         )
 
     async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
@@ -131,7 +133,9 @@ class FakeClient(ProviderClient):
         self._store().pop(media_id, None)
 
 
-def register_fake(provider_id: str, score_step: int = 1, refresh=None, incremental: bool = False) -> Provider:
+def register_fake(
+    provider_id: str, score_step: int = 1, refresh=None, incremental: bool = False, adult_help: str | None = None
+) -> Provider:
     client = type(f"Fake{provider_id}Client", (FakeClient,), {"provider_id": provider_id})
     return register(
         Provider(
@@ -146,6 +150,7 @@ def register_fake(provider_id: str, score_step: int = 1, refresh=None, increment
             incremental_reads=incremental,
             image_hosts=("img.example.test",),
             refresh=refresh,
+            adult_help=adult_help,
         )
     )
 
@@ -159,6 +164,7 @@ def reset_fakes() -> None:
     FakeClient.RATE_LIMITED = {}
     FakeClient.REAUTH_ON = None
     FakeClient.SKIP_ON = set()
+    FakeClient.HIDES_ADULT = set()
     FakeClient.REQUESTS = []
 
 

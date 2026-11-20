@@ -87,7 +87,10 @@ class KitsuClient(ProviderClient):
         user = data["data"][0]
         avatar = user["attributes"].get("avatar") or {}
         return RemoteUser(
-            id=user["id"], username=user["attributes"]["name"], avatar_url=avatar.get("large") or avatar.get("original")
+            id=user["id"],
+            username=user["attributes"]["name"],
+            avatar_url=avatar.get("large") or avatar.get("original"),
+            hides_adult=bool(user["attributes"].get("sfwFilter")),
         )
 
     async def fetch_list(self, since: datetime | None = None) -> list[ListEntry]:
@@ -250,6 +253,7 @@ PROVIDER = register(
         id="kitsu",
         name="Kitsu",
         image_hosts=("kitsu.app",),
+        adult_help="In Kitsu, open Settings → Adult Content and allow adult titles",
         monogram="K",
         colors=ProviderColors(bg="#FDE6E2", fg="#B42318", dark_bg="#5A1A12", dark_fg="#FFB4A8"),
         auth_kind=AuthKind.PASSWORD,

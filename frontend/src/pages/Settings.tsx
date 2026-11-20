@@ -8,6 +8,7 @@ import {
 import type { Account, Me } from '../api/types'
 import { relative } from '../format'
 import { setTheme, useTheme, type Theme } from '../theme'
+import { AdultNotice } from '../ui/AdultNotice'
 import { Avatar } from '../ui/Avatar'
 import { Icon } from '../ui/Icon'
 import { Loading } from '../ui/Loading'
@@ -104,6 +105,7 @@ function AccountRow({ a, me, name }: { a: Account; me: Me; name: (id: string) =>
           </>
         ) : <button type="button" className="btn btn-text" style={{ color: 'var(--error)' }} onClick={() => setConfirming(true)}>Unlink</button>)}
       </div>
+      <div style={{ flexBasis: '100%' }}><AdultNotice account={a} master={a.is_master} /></div>
       <Err error={setMaster.error ?? unlink.error} />
     </div>
   )

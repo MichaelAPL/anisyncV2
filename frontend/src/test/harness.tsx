@@ -6,16 +6,16 @@ import { AppRoutes } from '../App'
 import type { Account, Me, ProviderInfo, Site } from '../api/types'
 
 export const PROVIDERS: ProviderInfo[] = [
-  { id: 'anilist', name: 'AniList', monogram: 'AL', colors: {}, auth_kind: 'oauth_code', can_sign_in: true, paused: false, paused_reason: null },
-  { id: 'mal', name: 'MyAnimeList', monogram: 'MAL', colors: {}, auth_kind: 'oauth_code', can_sign_in: true, paused: false, paused_reason: null },
-  { id: 'kitsu', name: 'Kitsu', monogram: 'K', colors: {}, auth_kind: 'password', can_sign_in: false, paused: false, paused_reason: null },
+  { id: 'anilist', name: 'AniList', monogram: 'AL', colors: {}, auth_kind: 'oauth_code', can_sign_in: true, paused: false, paused_reason: null, adult_help: null },
+  { id: 'mal', name: 'MyAnimeList', monogram: 'MAL', colors: {}, auth_kind: 'oauth_code', can_sign_in: true, paused: false, paused_reason: null, adult_help: null },
+  { id: 'kitsu', name: 'Kitsu', monogram: 'K', colors: {}, auth_kind: 'password', can_sign_in: false, paused: false, paused_reason: null, adult_help: 'In Kitsu, open Settings → Adult Content and allow adult titles' },
 ]
 
 export const SITE: Site = { maintenance: false, maintenance_message: null, banner_text: null, banner_level: 'info', updated_at: '2026-01-01T00:00:00Z' }
 
 export const account = (id: number, provider: string, over: Partial<Account> = {}): Account => ({
   id, provider, remote_username: `${provider}-user`, is_master: false, sync_enabled: true, prune_missing: false, last_synced_at: null,
-  expires_at: null, needs_relink: false, expires_soon: false, avatar_url: null, ...over,
+  expires_at: null, needs_relink: false, expires_soon: false, avatar_url: null, hides_adult: false, ...over,
 })
 
 export const makeMe = (over: Partial<Me> = {}): Me => ({

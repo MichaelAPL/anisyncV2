@@ -28,6 +28,7 @@ class ProviderOut(BaseModel):
     can_sign_in: bool
     paused: bool
     paused_reason: str | None
+    adult_help: str | None  # what to change in the provider's own settings so adult titles can sync (None: nothing)
 
 
 class SiteOut(BaseModel):
@@ -51,6 +52,7 @@ async def providers(session: Session) -> list[ProviderOut]:
             can_sign_in=p.can_sign_in,
             paused=p.id in paused,
             paused_reason=paused.get(p.id),
+            adult_help=p.adult_help,
         )
         for p in all_providers()
     ]

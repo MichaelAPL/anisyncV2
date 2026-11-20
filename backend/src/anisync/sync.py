@@ -99,9 +99,9 @@ async def plan_for_mirror(
         await mapper.learn_from(learn_from)
         id_map = await mapper.resolve(master.provider, mirror.provider, [e.media_id for e in master_entries])
     await session.commit()
-    return plan_sync(
-        master_entries, mirror_entries, id_map, get_provider(mirror.provider).score_step, mirror.prune_missing
-    )
+    # A master that hides adult titles from us looks shorter than it is: never treat that as "removed from master".
+    prune = mirror.prune_missing and not master.hides_adult
+    return plan_sync(master_entries, mirror_entries, id_map, get_provider(mirror.provider).score_step, prune)
 
 
 @dataclass
@@ -177,6 +177,7 @@ async def apply_plan(
             await save()
             raise
         except ChangeSkipped as exc:
+            mirror.hides_adult = True  # the provider just showed us it hides titles; the notice follows from this
             if skipped is not None:
                 skipped.append(str(exc))
             if events is not None:
@@ -274,12 +275,24 @@ async def run_sync(
         raise
 
 
+async def check_adult_filter(account: LinkedAccount, client: ProviderClient) -> None:
+    """Re-read whether the account hides adult titles (the user may have changed the setting). One request, and only
+    for providers that have such a setting."""
+    if get_provider(account.provider).adult_help is not None:
+        account.hides_adult = (await client.whoami()).hides_adult
+
+
 async def _sync_mirrors(
     session: AsyncSession, user: User, run: SyncRun | None, paused: dict, dry_run: bool, full: bool
 ) -> dict:
     master = user.master
     summary: dict = {}
-    master_read = await refresh_snapshot(session, master, await client_for(master, session), is_master=True, full=full)
+    master_client = await client_for(master, session)
+    master_read = await refresh_snapshot(session, master, master_client, is_master=True, full=full)
+    # Someone looking at a preview or pressing "Sync now" has probably just changed a setting: look again right away.
+    recheck = run is None or run.trigger == "manual"
+    if recheck or master_read.mode == "full":
+        await check_adult_filter(master, master_client)
     master_entries = await snapshots.load(session, master.id)
     log.info("sync user %s: master read %s (%s received)", user.id, master_read.mode, len(master_read.received))
     for mirror in user.mirrors:
@@ -295,6 +308,8 @@ async def _sync_mirrors(
         try:
             client = await client_for(mirror, session)
             read = await refresh_snapshot(session, mirror, client, is_master=False, full=full)
+            if recheck or read.mode == "full":
+                await check_adult_filter(mirror, client)
             mirror_entries = await snapshots.load(session, mirror.id)
             plan = await plan_for_mirror(
                 session, master, master_entries, mirror, mirror_entries, master_read.received + read.received
@@ -376,7 +391,8 @@ async def push_entry(
     client = await client_for(account, session)
     step = get_provider(account.provider).score_step
     if entry is None:
-        if account.prune_missing:
+        master = owner.master
+        if account.prune_missing and not (master is not None and master.hides_adult):
             await client.delete_entry(target_id)
             await snapshots.remove(session, account.id, [target_id])
     else:
