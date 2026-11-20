@@ -370,6 +370,18 @@ Settings, profile screens, admin screens, Privacy page, maintenance page, banner
 ## Phase 6: Real-world test and deploy
 
 - [ ] Register MAL + AniList apps; end-to-end test sign-in, linking, preview, apply on throwaway accounts.
+- [ ] **Test with large lists after the first deploy** (2000+ entries on each provider, ideally an account on each
+      site): time of the first full sync, Kitsu paging (pages of 100, shrinking to 25 after timeouts) against a slow
+      Kitsu, AniList's single-query read and MAL's pages of 1000 at that size, rate limits (AniList got throttled
+      hard on the first real sync), and the dashboard progress. Measured so far only on a 976-entry list.
+- [ ] **ID conflicts (found on the first real sync, 2026-11-20).** The mapper logs "already has ... ID" / "not merging
+      media ... they disagree" when a title's cross-references from a list read (Kitsu's own `mappings`) disagree with
+      the offline dataset. Looked at four cases: all were Kitsu's cross-references pointing at a different AniList or
+      MAL title than the dataset (e.g. Natsume Yuujinchou Shichi listed with the AniList id of Roku); the dataset was
+      right, and the rule "dataset wins, never merge, never overwrite" handled them safely. Today they exist only as
+      repeating log lines. Wanted: record them in a table (providers' ids, where the hint came from, how often seen),
+      show them in Admin → Titles with "keep the dataset's answer" (remembered, silences the log) and "use the other"
+      (a manual link, which is never overwritten); report confirmed upstream errors to the dataset and to Kitsu.
 - [ ] Dockerfile; Railway (or Cloudflare Pages + Neon + Render) config; production `PUBLIC_URL`, secure cookies,
       secrets in the host's secret store.
 - [ ] Production data protection: Postgres reachable only from the app (private network, no public port), TLS to
