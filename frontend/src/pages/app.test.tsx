@@ -280,6 +280,17 @@ describe('settings', () => {
     await waitFor(() => expect(calls.find((c) => c.method === 'PATCH' && c.path === '/api/me')?.body).toEqual({ show_adult_covers: true }))
   })
 
+  it('saves the master-list choice to ignore adult titles', async () => {
+    const calls = stubApi({ 'GET /api/sessions': sessions, 'PATCH /api/me': makeMe({ ignore_adult_titles: true }) })
+    renderRoute('/settings')
+    const user = userEvent.setup()
+    const toggle = await screen.findByRole('switch', { name: /ignore adult titles on my master list/i })
+    expect(toggle).not.toBeChecked()
+    await user.click(toggle)
+    await waitFor(() => expect(calls.find((c) => c.method === 'PATCH' && c.path === '/api/me')?.body).toEqual({ ignore_adult_titles: true }))
+    expect(screen.getByText(/never removed/i)).toBeInTheDocument()
+  })
+
   it('saves the per-mirror choice to leave adult titles out', async () => {
     const calls = stubApi({ 'GET /api/sessions': sessions, 'PATCH /api/accounts/2': makeMe() })
     renderRoute('/settings')

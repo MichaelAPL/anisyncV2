@@ -102,6 +102,14 @@ async def upsert(session: AsyncSession, account_id: int, entries: Iterable[ListE
         )
 
 
+async def remove_adult(session: AsyncSession, account_id: int) -> int:
+    """Forget the adult titles stored for the account (used when its owner chooses to ignore them)."""
+    result = await session.execute(
+        delete(ListSnapshot).where(ListSnapshot.account_id == account_id, ListSnapshot.adult.is_(True))
+    )
+    return result.rowcount or 0
+
+
 async def remove(session: AsyncSession, account_id: int, external_ids: Sequence[str]) -> None:
     for start in range(0, len(external_ids), CHUNK):
         await session.execute(

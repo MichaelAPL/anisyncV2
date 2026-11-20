@@ -51,6 +51,7 @@ class MeOut(BaseModel):
     avatar_provider: str | None  # which provider the picture came from
     theme: Literal["system", "light", "dark"]
     show_adult_covers: bool  # false: covers of adult titles are blurred
+    ignore_adult_titles: bool  # adult titles on the master list are not stored, shown or copied anywhere
     master_account_id: int | None
     role: str
     permissions: list[str]  # what the UI may show; the server enforces it on every request
@@ -66,6 +67,7 @@ def _me(user: User) -> MeOut:
         avatar_provider=user.avatar_provider,
         theme=user.theme,  # type: ignore[arg-type]
         show_adult_covers=user.show_adult_covers,
+        ignore_adult_titles=user.ignore_adult_titles,
         master_account_id=user.master_account_id,
         role=user.role,
         permissions=sorted(user.permissions),
@@ -116,6 +118,7 @@ class ProfileIn(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=40)
     theme: Literal["system", "light", "dark"] | None = None
     show_adult_covers: bool | None = None
+    ignore_adult_titles: bool | None = None
 
     @field_validator("display_name")
     @classmethod
@@ -132,7 +135,7 @@ class ProfileIn(BaseModel):
 
 @router.patch("/me", dependencies=[ratelimit.per_user("profile", limit=20, window=timedelta(hours=1))])
 async def update_profile(body: ProfileIn, user: CurrentUser, session: Session) -> MeOut:
-    if body.display_name is None and body.theme is None and body.show_adult_covers is None:
+    if all(v is None for v in (body.display_name, body.theme, body.show_adult_covers, body.ignore_adult_titles)):
         raise HTTPException(422, "Nothing to change")
     if body.display_name is not None:
         user.display_name = body.display_name
@@ -140,6 +143,13 @@ async def update_profile(body: ProfileIn, user: CurrentUser, session: Session) -
         user.theme = body.theme
     if body.show_adult_covers is not None:
         user.show_adult_covers = body.show_adult_covers
+    if body.ignore_adult_titles is not None and body.ignore_adult_titles != user.ignore_adult_titles:
+        user.ignore_adult_titles = body.ignore_adult_titles
+        if user.master is not None:
+            if body.ignore_adult_titles:
+                await snapshots.remove_adult(session, user.master.id)  # effective at once: gone from My list too
+            else:
+                user.master.last_full_read_at = None  # the next read is a full one, which brings them back
     await session.commit()
     return _me(user)
 
@@ -200,7 +210,10 @@ async def delete_account(body: DeleteAccountIn, response: Response, user: Curren
 
 @router.put("/me/master")
 async def set_master(body: MasterIn, user: CurrentUser, session: Session) -> MeOut:
-    user.master_account_id = _account(user, body.account_id).id
+    account = _account(user, body.account_id)
+    user.master_account_id = account.id
+    if user.ignore_adult_titles:
+        await snapshots.remove_adult(session, account.id)  # it may have been read as a mirror before
     await session.commit()
     return _me(user)
 
@@ -313,7 +326,9 @@ async def get_list(user: CurrentUser, session: Session) -> list[ListEntryOut]:
         raise HTTPException(400, "Pick a master list first")
     if user.master.last_full_read_at is None:  # only the first read needs the provider (and may be refused if paused)
         client = await _master_client(user, session)
-        await sync.refresh_snapshot(session, user.master, client, is_master=True, full=True)
+        await sync.refresh_snapshot(
+            session, user.master, client, is_master=True, full=True, drop_adult=user.ignore_adult_titles
+        )
     entries = await snapshots.load(session, user.master.id)
     return [ListEntryOut.model_validate(e) for e in sorted(entries, key=lambda e: e.title.lower())]
 
@@ -325,7 +340,9 @@ async def get_list(user: CurrentUser, session: Session) -> list[ListEntryOut]:
 async def refresh_list(user: CurrentUser, session: Session) -> RefreshOut:
     """Pick up changes made on the master's own site now (one small request; the scheduled sync does it daily)."""
     client = await _master_client(user, session)
-    read = await sync.refresh_snapshot(session, user.master, client, is_master=True)
+    read = await sync.refresh_snapshot(
+        session, user.master, client, is_master=True, drop_adult=user.ignore_adult_titles
+    )
     return RefreshOut(mode=read.mode, changed=len(read.received))
 
 

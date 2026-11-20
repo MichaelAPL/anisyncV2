@@ -44,6 +44,8 @@ class User(Base):
     theme: Mapped[str] = mapped_column(String(10), default="system", server_default="system")  # system | light | dark
     # Covers of adult titles are blurred in the app unless the user chooses to see them.
     show_adult_covers: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Adult titles on the master list are not stored and not copied to any mirror (nor shown in My list).
+    ignore_adult_titles: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     accounts: Mapped[list["LinkedAccount"]] = relationship(
         back_populates="user", foreign_keys="LinkedAccount.user_id", cascade="all, delete-orphan", lazy="selectin"

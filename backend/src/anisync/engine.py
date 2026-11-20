@@ -59,6 +59,7 @@ def plan_sync(
     score_step: int,
     prune_missing: bool = False,
     skip_adult: bool = False,
+    protect_adult: bool = False,
 ) -> Plan:
     """id_map: master media_id -> mirror media_id (None = the title has no ID on the mirror's provider)."""
     plan = Plan()
@@ -90,6 +91,8 @@ def plan_sync(
         for media_id, current in mirror_by_id.items():
             if media_id in wanted or master_hints & _hints(current):
                 continue
+            if protect_adult and current.adult:
+                continue  # the master ignores adult titles: their absence there says nothing about them
             if plan.unmapped and not _hints(current):
                 continue
             plan.changes.append(Change("delete", media_id, None, current))

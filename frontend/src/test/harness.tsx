@@ -19,7 +19,7 @@ export const account = (id: number, provider: string, over: Partial<Account> = {
 })
 
 export const makeMe = (over: Partial<Me> = {}): Me => ({
-  id: 1, display_name: 'Kaito', avatar_url: null, avatar_provider: null, theme: 'system', show_adult_covers: false, master_account_id: 1, role: 'user', permissions: [],
+  id: 1, display_name: 'Kaito', avatar_url: null, avatar_provider: null, theme: 'system', show_adult_covers: false, ignore_adult_titles: false, master_account_id: 1, role: 'user', permissions: [],
   next_sync_at: null, accounts: [account(1, 'anilist', { is_master: true }), account(2, 'mal')], ...over,
 })
 

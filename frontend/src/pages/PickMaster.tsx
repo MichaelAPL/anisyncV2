@@ -3,6 +3,7 @@ import { usePatchAccount, useProviders, useSetMaster } from '../api/hooks'
 import type { Account, Me } from '../api/types'
 import { AdultNotice } from '../ui/AdultNotice'
 import { Icon } from '../ui/Icon'
+import { IgnoreAdultSwitch } from '../ui/IgnoreAdult'
 import { OnboardingLayout, RequireUser } from '../ui/Onboarding'
 import { ProviderChip } from '../ui/Provider'
 
@@ -78,6 +79,11 @@ function Body({ me }: { me: Me }) {
       </fieldset>
       {me.accounts.filter((a) => a.hides_adult).map((a) => <AdultNotice key={a.id} account={a} master={a.is_master} />)}
       {setMaster.isError && <p className="body-m" role="alert" style={{ color: 'var(--error)' }}>Couldn't change the master list. Try again.</p>}
+      {master && (
+        <section className="card-out" style={{ padding: 16 }}>
+          <IgnoreAdultSwitch me={me} name={name(master.provider)} />
+        </section>
+      )}
       <section className="card-out" style={{ overflow: 'hidden' }}>
         <h2 className="title-m" style={{ padding: '16px 16px 4px' }}>Mirrors</h2>
         <p className="body-m muted" style={{ padding: '0 16px 8px' }}>Removing titles is off by default, so nothing is deleted from your mirrors unless you turn it on.</p>

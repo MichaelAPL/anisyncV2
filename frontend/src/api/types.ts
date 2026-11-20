@@ -21,6 +21,7 @@ export interface Me {
   avatar_provider: string | null
   theme: 'system' | 'light' | 'dark'
   show_adult_covers: boolean
+  ignore_adult_titles: boolean
   master_account_id: number | null
   role: string
   permissions: string[]

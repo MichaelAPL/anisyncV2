@@ -55,6 +55,11 @@ class ReadResult:
     drifted: int = 0  # entries edited directly on the provider's site since we last read or wrote them (full reads)
 
 
+def _without_adult(entries: list[ListEntry], drop: bool) -> list[ListEntry]:
+    """The owner chose to ignore adult titles on this list: they are dropped before anything is stored."""
+    return [e for e in entries if not e.adult] if drop else entries
+
+
 def full_read_due(account: LinkedAccount, now: datetime | None = None) -> bool:
     return (
         account.last_full_read_at is None or (now or datetime.now(UTC)) - account.last_full_read_at >= FULL_READ_EVERY
@@ -62,21 +67,27 @@ def full_read_due(account: LinkedAccount, now: datetime | None = None) -> bool:
 
 
 async def refresh_snapshot(
-    session: AsyncSession, account: LinkedAccount, client: ProviderClient, *, is_master: bool, full: bool = False
+    session: AsyncSession,
+    account: LinkedAccount,
+    client: ProviderClient,
+    *,
+    is_master: bool,
+    full: bool = False,
+    drop_adult: bool = False,
 ) -> ReadResult:
     """Bring the account's snapshot up to date with the provider, as cheaply as the provider allows."""
     provider = get_provider(account.provider)
     now = datetime.now(UTC)
     incremental = is_master and provider.incremental_reads and account.sync_cursor is not None
     if full or full_read_due(account, now) or (is_master and not incremental):
-        entries = await client.fetch_list()
+        entries = _without_adult(await client.fetch_list(), drop_adult)
         replaced = await snapshots.replace_all(session, account.id, entries, provider.score_step)
         account.last_full_read_at = now
         account.sync_cursor = snapshots.newest_update(entries) or account.sync_cursor
         await session.commit()
         return ReadResult("full", entries, replaced.removed, replaced.drifted)
     if is_master:
-        entries = await client.fetch_list(since=account.sync_cursor)
+        entries = _without_adult(await client.fetch_list(since=account.sync_cursor), drop_adult)
         await snapshots.upsert(session, account.id, entries, provider.score_step)
         account.sync_cursor = max(snapshots.newest_update(entries) or account.sync_cursor, account.sync_cursor)
         await session.commit()
@@ -94,6 +105,7 @@ async def plan_for_mirror(
     mirror: LinkedAccount,
     mirror_entries: list[ListEntry],
     learn_from: list[ListEntry],
+    ignore_adult: bool = False,
 ) -> Plan:
     async with IdMapper(session) as mapper:
         await mapper.learn_from(learn_from)
@@ -102,7 +114,13 @@ async def plan_for_mirror(
     # A master that hides adult titles from us looks shorter than it is: never treat that as "removed from master".
     prune = mirror.prune_missing and not master.hides_adult
     return plan_sync(
-        master_entries, mirror_entries, id_map, get_provider(mirror.provider).score_step, prune, mirror.skip_adult
+        master_entries,
+        mirror_entries,
+        id_map,
+        get_provider(mirror.provider).score_step,
+        prune,
+        mirror.skip_adult,
+        protect_adult=ignore_adult,
     )
 
 
@@ -291,7 +309,10 @@ async def _sync_mirrors(
     master = user.master
     summary: dict = {}
     master_client = await client_for(master, session)
-    master_read = await refresh_snapshot(session, master, master_client, is_master=True, full=full)
+    ignore_adult = user.ignore_adult_titles
+    master_read = await refresh_snapshot(
+        session, master, master_client, is_master=True, full=full, drop_adult=ignore_adult
+    )
     if master_read.mode == "full":  # weekly; in between, the user can say "I changed it" (POST .../recheck-adult)
         await check_adult_filter(master, master_client)
     master_entries = await snapshots.load(session, master.id)
@@ -313,7 +334,13 @@ async def _sync_mirrors(
                 await check_adult_filter(mirror, client)
             mirror_entries = await snapshots.load(session, mirror.id)
             plan = await plan_for_mirror(
-                session, master, master_entries, mirror, mirror_entries, master_read.received + read.received
+                session,
+                master,
+                master_entries,
+                mirror,
+                mirror_entries,
+                master_read.received + read.received,
+                ignore_adult,
             )
             result: dict = plan.counts() | {"unmapped_titles": [e.title for e in plan.unmapped][:50], "read": read.mode}
             if plan.adult_skipped:

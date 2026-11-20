@@ -65,6 +65,13 @@ describe('choose master', () => {
     await waitFor(() => expect(radios[1]).toBeChecked())
   })
 
+  it('offers one switch to ignore adult titles on the master list', async () => {
+    const calls = stubApi({ 'PATCH /api/me': makeMe({ ignore_adult_titles: true }) })
+    renderRoute('/master')
+    await userEvent.setup().click(await screen.findByRole('switch', { name: /ignore adult titles on my master list/i }))
+    await waitFor(() => expect(calls.find((c) => c.method === 'PATCH')?.body).toEqual({ ignore_adult_titles: true }))
+  })
+
   it('offers to leave adult titles out of a mirror', async () => {
     const calls = stubApi({ 'PATCH /api/accounts/2': makeMe() })
     renderRoute('/master')

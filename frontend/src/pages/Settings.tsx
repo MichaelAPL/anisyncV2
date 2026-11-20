@@ -11,6 +11,7 @@ import { setTheme, useTheme, type Theme } from '../theme'
 import { AdultNotice } from '../ui/AdultNotice'
 import { Avatar } from '../ui/Avatar'
 import { Icon } from '../ui/Icon'
+import { IgnoreAdultSwitch } from '../ui/IgnoreAdult'
 import { Loading } from '../ui/Loading'
 import { ProviderChip } from '../ui/Provider'
 import { Topbar } from '../ui/Shell'
@@ -120,6 +121,11 @@ function SyncOptions({ me, name }: { me: Me; name: (id: string) => string }) {
       <p className="body-m muted" style={{ marginBottom: 8 }}>
         Your lists sync once a day{me.next_sync_at ? ` (next: ${relative(me.next_sync_at)})` : ''} and right after you edit in AniSync. Changes made directly on a mirror are caught at its weekly full check.
       </p>
+      {me.accounts.some((a) => a.is_master) && (
+        <div style={{ borderTop: '1px solid var(--outline-variant)', paddingTop: 4 }}>
+          <IgnoreAdultSwitch me={me} name={name(me.accounts.find((a) => a.is_master)!.provider)} />
+        </div>
+      )}
       {mirrors.map((a) => (
         <div key={a.id}>
           <label className="toggle-row" style={{ justifyContent: 'space-between', borderTop: '1px solid var(--outline-variant)' }}>

@@ -107,7 +107,7 @@ export function useRefreshList() {
 export const useSessions = () => useQuery({ queryKey: ['sessions'], queryFn: () => api<SessionInfo[]>('/api/sessions') })
 
 export const useSaveProfile = () =>
-  useMeMutation((v: { display_name?: string; theme?: Me['theme']; show_adult_covers?: boolean }) =>
+  useMeMutation((v: { display_name?: string; theme?: Me['theme']; show_adult_covers?: boolean; ignore_adult_titles?: boolean }) =>
     api<Me>('/api/me', { method: 'PATCH', json: v }),
   )
 export const useRecheckAdult = () => useMeMutation((id: number) => api<Me>(`/api/accounts/${id}/recheck-adult`, { method: 'POST' }))
