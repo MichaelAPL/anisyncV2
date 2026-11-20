@@ -29,3 +29,11 @@ main { flex: 1 0 auto; }
   .bar-indeterminate::after { width: 100%; opacity: .5; }
   .hop-dot { left: calc(50% - 6px); }
 }
+
+/* Number fields without the spinner arrows (a "/ 12" suffix sits where they would be). */
+.no-spin::-webkit-outer-spin-button, .no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.no-spin { -moz-appearance: textfield; appearance: textfield; }
+
+/* List rows that are buttons (My list): look like the design's rows, not like default buttons. */
+button.list-item { width: 100%; text-align: left; font: inherit; border: 0; background: transparent; cursor: pointer; }
+button.list-item.list-selected { background: var(--secondary-container); }

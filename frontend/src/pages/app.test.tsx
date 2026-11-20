@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ListEntry } from '../api/types'
+import { scrolled } from '../test/setup'
 import { account, makeMe, renderRoute, stubApi } from '../test/harness'
 
 beforeEach(() => localStorage.setItem('anisync-setup-done', '1'))
@@ -218,6 +219,35 @@ describe('my list', () => {
     await screen.findByText('Adult Show')
     expect(screen.getByRole('img', { name: /cover: adult show/i })).not.toHaveTextContent('18+')
     expect(screen.queryByRole('img', { name: /cover hidden/i })).toBeNull()
+  })
+
+  it('shows the total next to the episode count, as "3 / 12", in the list and in the editor', async () => {
+    stubApi({ 'GET /api/list': ENTRIES })
+    renderRoute('/list')
+    const user = userEvent.setup()
+    expect((await screen.findAllByText(/3 \/ 12 episodes/)).length).toBeGreaterThan(0)
+    await user.click(screen.getByText('Frieren'))
+    const field = screen.getByLabelText('Episodes watched')
+    expect(field).toHaveValue(3)
+    expect(screen.getByText('/ 12')).toBeInTheDocument()
+    expect(field).toHaveAccessibleDescription('/ 12')
+  })
+
+  it('has no total to show for a title without a known episode count', async () => {
+    stubApi({ 'GET /api/list': [entry('7', 'Open Ended', { total_episodes: null })] })
+    renderRoute('/list')
+    await userEvent.setup().click(await screen.findByText('Open Ended'))
+    expect(screen.getByLabelText('Episodes watched')).toBeInTheDocument()
+    expect(screen.queryByText(/^\/ \d+/)).toBeNull()
+  })
+
+  it('keeps the editor in view while the list scrolls, and brings it into view when a title is chosen', async () => {
+    stubApi({ 'GET /api/list': ENTRIES })
+    renderRoute('/list')
+    await userEvent.setup().click(await screen.findByText('Frieren'))
+    const panel = screen.getByRole('complementary')
+    expect(panel).toHaveStyle({ position: 'sticky', top: '16px' })
+    expect(scrolled).toContain(panel)
   })
 
   it('rejects a score above 10 before sending anything', async () => {

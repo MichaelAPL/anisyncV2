@@ -4,6 +4,7 @@ import { afterEach, vi } from 'vitest'
 
 afterEach(() => {
   cleanup()
+  scrolled.length = 0
   localStorage.clear()
   vi.unstubAllGlobals()
 })
@@ -16,3 +17,9 @@ Object.defineProperty(window, 'matchMedia', {
     addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
   }),
 })
+
+// jsdom doesn't implement scrolling; record the calls so tests can check what was brought into view.
+export const scrolled: Element[] = []
+Element.prototype.scrollIntoView = function (this: Element) {
+  scrolled.push(this)
+}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useOutletContext } from 'react-router'
 import { ApiError } from '../api/client'
 import { useList, useProviders, useRefreshList, useRemoveEntry, useSaveEntry } from '../api/hooks'
@@ -22,7 +22,7 @@ function detail(e: ListEntry): string {
   const bits: string[] = [LABEL[e.status]]
   if (e.rewatching) bits.push('Rewatching')
   if (e.status === 'planning') return bits.join(' · ')
-  bits.push(e.total_episodes ? `${e.progress} of ${e.total_episodes} episodes` : `${e.progress} episodes`)
+  bits.push(e.total_episodes ? `${e.progress} / ${e.total_episodes} episodes` : `${e.progress} episodes`)
   bits.push(e.score ? `Score ${e.score / 10}` : 'No score')
   return bits.join(' · ')
 }
@@ -67,9 +67,14 @@ function EntryForm({ entry, masterName, onClose, onSaved, onRemoved }: {
           onClick={() => set('progress', Math.max(0, f.progress - 1))}><Icon name="minus" size={20} /></button>
         <div className="field" style={{ flex: 1 }}>
           <label htmlFor="eps">Episodes watched</label>
-          <input id="eps" type="number" inputMode="numeric" min={0} max={max} value={f.progress}
+          <input id="eps" type="number" inputMode="numeric" min={0} max={max} value={f.progress} className="no-spin"
+            aria-describedby={max ? 'eps-total' : undefined} style={max ? { paddingRight: 72 } : undefined}
             onChange={(e) => set('progress', Math.max(0, Math.floor(Number(e.target.value) || 0)))} />
-          {max && <span className="support">of {max}</span>}
+          {max && (
+            <span id="eps-total" className="body-l muted" style={{ position: 'absolute', right: 16, top: 16, pointerEvents: 'none' }}>
+              / {max}
+            </span>
+          )}
         </div>
         <button type="button" className="icon-btn" aria-label="One episode more" style={{ border: '1px solid var(--outline)' }}
           onClick={() => set('progress', max ? Math.min(max, f.progress + 1) : f.progress + 1)}><Icon name="plus" size={20} /></button>
@@ -112,6 +117,7 @@ export function ListEditor() {
   const refresh = useRefreshList()
   const save = useSaveEntry()
   const phone = useIsPhone()
+  const panel = useRef<HTMLElement>(null)
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<Status | 'all'>('all')
   const [selected, setSelected] = useState<string | null>(null)
@@ -131,6 +137,12 @@ export function ListEditor() {
     return entries.filter((e) => (filter === 'all' || e.status === filter) && (!needle || e.title.toLowerCase().includes(needle)))
   }, [entries, q, filter])
   const current = entries.find((e) => e.media_id === selected) ?? null
+
+  // The editor sits beside the list and follows the scroll; when the window is too narrow for that it wraps below the
+  // list, so bring it into view when a title is chosen.
+  useEffect(() => {
+    if (selected) panel.current?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+  }, [selected])
 
   useEffect(() => {
     if (!toast) return
@@ -173,7 +185,7 @@ export function ListEditor() {
                 <section className="card-out list" aria-label="Entries" style={{ overflow: 'hidden' }}>
                   {visible.slice(0, shown).map((e) => (
                     <button key={e.media_id} type="button" className={`list-item list-link${e.media_id === selected ? ' list-selected' : ''}`}
-                      aria-current={e.media_id === selected || undefined} onClick={() => setSelected(e.media_id)} style={{ width: '100%', textAlign: 'left', font: 'inherit', border: 'none' }}>
+                      aria-current={e.media_id === selected || undefined} onClick={() => setSelected(e.media_id)}>
                       <Cover title={e.title} url={e.image_url} adult={e.adult} />
                       <span className="list-text"><span className="title-m">{e.title}</span><span className="body-m muted">{detail(e)}</span></span>
                       <Icon name="chevron-right" size={20} />
@@ -183,7 +195,12 @@ export function ListEditor() {
                 </section>
                 {visible.length > shown && <button type="button" className="btn btn-tonal" style={{ alignSelf: 'center' }} onClick={() => setShown(shown + PAGE)}>Show more ({visible.length - shown} left)</button>}
               </div>
-              {!phone && current && <aside className="split-side card" aria-labelledby="sheet-h" style={{ padding: '20px 20px 24px' }}>{form}</aside>}
+              {!phone && current && (
+                <aside ref={panel} className="split-side card" aria-labelledby="sheet-h"
+                  style={{ padding: '20px 20px 24px', position: 'sticky', top: 16, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' }}>
+                  {form}
+                </aside>
+              )}
             </div>
           </>
         )}

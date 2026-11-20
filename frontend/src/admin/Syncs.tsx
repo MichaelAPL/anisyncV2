@@ -10,7 +10,7 @@ function RunRow({ r, open, onToggle }: { r: ReturnType<typeof useRuns>['data'] e
   const detail = useRunDetail(open ? r.id : null)
   return (
     <>
-      <button type="button" className="list-item list-link" onClick={onToggle} aria-expanded={open} style={{ width: '100%', textAlign: 'left', font: 'inherit', border: 'none' }}>
+      <button type="button" className="list-item list-link" onClick={onToggle} aria-expanded={open}>
         <div className="list-text">
           <span className="title-m">#{r.id} · {r.display_name ?? `user ${r.user_id}`} · {r.trigger}</span>
           <span className="body-m muted">{clock(r.started_at)} · {r.changes} changes · {r.mirrors} mirrors · {r.errors} errors · {r.warnings} warnings</span>
