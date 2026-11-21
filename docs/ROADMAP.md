@@ -429,6 +429,8 @@ tests per screen configuration (Playwright).
 - [ ] Donation card in Settings: no platform chosen yet.
 - [ ] A chart on the admin overview (a table for now).
 - [ ] Resumable Kitsu full read, and a negative cache for titles that Kitsu hides.
+- [ ] Pick an AI code review tool (e.g. Claude Code Review, Cursor Bugbot) and point it at `CODING_STANDARDS.md`
+  (for Claude Code Review: a `REVIEW.md` whose first line after the title is `@CODING_STANDARDS.md`).
 - [ ] Not verified: phone layouts and light mode by eye (the browser tests cover them mechanically); a real list of
   2000+ entries (Phase 6); writes to MAL as a *mirror* (MAL has only been the master so far).
 

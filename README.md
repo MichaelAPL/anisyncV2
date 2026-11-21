@@ -59,6 +59,8 @@ Tests: `cd backend && uv run pytest -q` (backend, needs the Postgres container),
 `npm run e2e` (Playwright).
 
 Architecture, decisions and API quirks: [AGENTS.md](AGENTS.md). Status and next steps: [docs/ROADMAP.md](docs/ROADMAP.md).
+Rules every change is reviewed against, each traced to the fix that taught it: [CODING_STANDARDS.md](CODING_STANDARDS.md).
+Write-ups of solved problems go in `docs/solutions/`.
 
 ## Data credits
 

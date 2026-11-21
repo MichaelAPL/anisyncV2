@@ -5,6 +5,10 @@ Public multi-user site. Rebuild of a 2022 Rails app (`~/Code/anisync`, deprecate
 it got as far as MAL/AniList OAuth and importing a MAL list; it never synced anything).
 
 Current progress and next steps: **`docs/ROADMAP.md`** (read it first, keep it updated).
+Documented solutions to past problems (bugs, best practices, workflow patterns): `docs/solutions/`, organized by
+category with YAML frontmatter (`module`, `tags`, `problem_type`); relevant when implementing or debugging in an area it covers.
+Coding standards: **`CODING_STANDARDS.md`** (read before writing or reviewing code; update it when a change establishes
+or retires a rule).
 
 ## Product model (decided — don't re-litigate without the user)
 
@@ -143,6 +147,8 @@ OAuth redirect URIs (register with each redirect-flow provider): `http://localho
   DB. Never hit real provider APIs from the test suite.
 - Ruff, line length 120. Alembic for every schema change.
 - Never log or persist provider passwords or raw tokens; tokens go through `LinkedAccount` properties (encrypted).
+- After a solved, verified problem, offer once to invoke the `ce-compound` skill at the completion checkpoint when the work corrected a wrong belief about how something behaves: an approach that failed, a review finding that exposed a real defect, or an assumption, document, or first diagnosis that turned out wrong. A naming, style, or preference change does not count. Work that went as first planned does not need the offer. Do not judge whether the lesson deserves a document: `ce-compound` decides whether it qualifies and what holds it (a test, a lint rule, a coding standard, or a learning), and writes nothing when nothing qualifies. Offer at the checkpoint so what it writes can ship in the PR that produced it, and only where the repository treats captured learnings as tracked, committed knowledge.
+- Write every report, summary, or handoff to the user through the `ce-noslop` skill. This applies when you are the top-level agent writing to the user, not when you are a subagent reporting to its caller. Do not apply it to code, config, verbatim quotes, or text the user asked to post as written.
 
 ## Design
 
