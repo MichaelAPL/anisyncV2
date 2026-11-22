@@ -1,8 +1,11 @@
 """The /api endpoints end to end (fake providers, in-memory job queue): responses must satisfy their schemas."""
 
+import asyncio
+
 import pytest
 from procrastinate.testing import InMemoryConnector
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from anisync import jobs, sync
 from anisync.models import LinkedAccount, ListSnapshot, SyncRun, SyncRunEvent, UnmatchedTitle, UnmatchedTitleUser
@@ -160,3 +163,50 @@ async def test_unlinking_deletes_everything_we_hold_about_that_account(alice, se
         assert len((await session.scalars(select(model).where(getattr(model, own) == fb.id))).all()) == 0
         assert len((await session.scalars(select(model).where(getattr(model, own) == fa.id))).all()) == 1  # untouched
     assert (await session.scalars(select(UnmatchedTitleUser).where(UnmatchedTitleUser.user_id == user.id))).all() == []
+
+
+# ---- health check (public: an outside uptime check and the deploy proxy call it) -------------------------------
+
+UNHEALTHY = {"detail": "Service unavailable"}
+
+
+@pytest.fixture
+def worker_task(monkeypatch):
+    """Puts a task where the app keeps its in-process worker."""
+    from anisync.main import app
+
+    def install(task):
+        monkeypatch.setattr(app.state, "worker", task, raising=False)
+
+    return install
+
+
+async def test_health_is_ok_with_a_reachable_database_and_a_running_worker(client, worker_task):
+    running = asyncio.create_task(asyncio.Event().wait())
+    worker_task(running)
+    try:
+        response = await client.get("/api/health")
+    finally:
+        running.cancel()
+    assert response.status_code == 200 and response.json() == {"ok": True}
+
+
+async def test_health_fails_when_the_worker_has_stopped(client, worker_task):
+    async def crash():
+        raise RuntimeError("worker crashed at /srv/secret.py")
+
+    stopped = asyncio.create_task(crash())
+    await asyncio.wait([stopped])
+    worker_task(stopped)
+    response = await client.get("/api/health")
+    assert response.status_code == 503 and response.json() == UNHEALTHY
+
+
+async def test_health_fails_when_the_database_does_not_answer(client, session, monkeypatch):
+    async def unreachable(*args, **kwargs):
+        raise OperationalError("select 1", {}, Exception("connection to db:5432 failed for user anisync"))
+
+    monkeypatch.setattr(session, "execute", unreachable)
+    response = await client.get("/api/health")
+    assert response.status_code == 503 and response.json() == UNHEALTHY
+    assert "anisync" not in response.text and "5432" not in response.text

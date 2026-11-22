@@ -20,12 +20,20 @@ log = logging.getLogger(__name__)
 settings = get_settings()
 
 
+# How long a stopping app lets running jobs finish before cancelling them. The container is killed some seconds after
+# being asked to stop (`drain_timeout` in config/deploy.yml, which must stay above this); a cancelled sync then still
+# has time to close its own run as `error` (see `sync.run_sync`). Without a limit the worker waits forever and the
+# run is left "running".
+WORKER_SHUTDOWN_GRACE = 20.0
+
+
 @contextlib.asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with SessionLocal() as session:
         promoted = await moderation.bootstrap_admins(session)
-        if settings.run_worker_in_process:  # this process runs the syncs, so any run left open belongs to a dead one
-            stopped = await sync.close_interrupted_runs(session, everything=True)
+        if settings.run_worker_in_process:
+            # Only runs that stopped making progress: in a rolling deploy the old container may still be syncing.
+            stopped = await sync.close_interrupted_runs(session)
             if stopped:
                 log.warning("closed %s sync run(s) interrupted by the last shutdown", stopped)
     if promoted:
@@ -33,7 +41,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     async with jobs.app.open_async():
         worker = None
         if settings.run_worker_in_process:
-            worker = asyncio.create_task(jobs.app.run_worker_async(install_signal_handlers=False))
+            worker = asyncio.create_task(
+                jobs.app.run_worker_async(
+                    install_signal_handlers=False, shutdown_graceful_timeout=WORKER_SHUTDOWN_GRACE
+                )
+            )
+        app.state.worker = worker  # the health check reports the app unhealthy once this task has ended
         try:
             yield
         finally:

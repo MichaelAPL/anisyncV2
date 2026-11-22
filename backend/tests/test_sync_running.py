@@ -1,5 +1,8 @@
 """A user has one sync at a time, and a sync that dies never stays "running"."""
 
+import asyncio
+import contextlib
+import time
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -7,7 +10,7 @@ import pytest
 from procrastinate.testing import InMemoryConnector
 from sqlalchemy import select
 
-from anisync import jobs, sync
+from anisync import jobs, main, sync
 from anisync.models import SyncRun
 from anisync.providers.base import RateLimited
 from tests.fakes import FakeClient
@@ -18,12 +21,13 @@ from tests.test_sync_snapshots import requests, title
 usesfakes = pytest.mark.usefixtures("fakes", "client")
 
 
-async def open_run(session, user_id, started_ago=timedelta(minutes=1), finished=False):
+async def open_run(session, user_id, started_ago=timedelta(minutes=1), finished=False, heartbeat_ago=None):
     run = SyncRun(
         user_id=user_id,
         trigger="manual",
         summary={},
         started_at=datetime.now(UTC) - started_ago,
+        heartbeat_at=datetime.now(UTC) - heartbeat_ago if heartbeat_ago is not None else None,
         finished_at=datetime.now(UTC) if finished else None,
     )
     session.add(run)
@@ -140,3 +144,143 @@ async def test_a_crash_is_closed_even_when_the_rollback_expires_everything(sessi
         await sync.run_sync(session, user_id, "manual")
     run = (await session.scalars(select(SyncRun).where(SyncRun.user_id == user_id))).one()
     assert run.status == "error" and run.finished_at is not None
+
+
+# ---- deploys: a restart closes only runs that stopped, and a stopping app closes its own --------------------------
+
+
+@pytest.fixture
+def app_started(session, monkeypatch):
+    """The app's real startup and shutdown (its in-process worker on an in-memory queue), on the test session."""
+
+    class Shared:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(main, "SessionLocal", Shared)
+    monkeypatch.setattr(jobs, "SessionLocal", Shared)
+    monkeypatch.setattr(main.settings, "run_worker_in_process", True)
+    monkeypatch.setattr(jobs.app.periodic_registry, "periodic_tasks", {})  # no scheduled jobs racing the test
+    monkeypatch.setattr(main.app.state, "worker", None, raising=False)
+    connector = InMemoryConnector()
+
+    @contextlib.asynccontextmanager
+    async def started():
+        with jobs.app.replace_connector(connector):
+            async with main.lifespan(main.app):
+                yield
+
+    return started
+
+
+@usesfakes
+async def test_a_long_run_still_making_progress_survives_a_restart_and_keeps_blocking(session, app_started):
+    user = await make_sync_user(session)
+    run = await open_run(session, user.id, started_ago=timedelta(minutes=20), heartbeat_ago=timedelta(seconds=30))
+    async with app_started():
+        await session.refresh(run)
+        assert (run.status, run.finished_at) == ("running", None)
+        assert await sync.start_run(session, user.id, "manual") is None
+
+
+@usesfakes
+async def test_a_run_without_a_heartbeat_for_sixteen_minutes_is_closed_at_startup(session, app_started):
+    user = await make_sync_user(session)
+    run = await open_run(session, user.id, started_ago=timedelta(minutes=20), heartbeat_ago=timedelta(minutes=16))
+    async with app_started():
+        await session.refresh(run)
+        assert run.status == "interrupted" and run.finished_at is not None
+        assert await sync.start_run(session, user.id, "manual") is not None
+
+
+@usesfakes
+async def test_stopping_the_app_mid_sync_closes_the_run_as_failed_within_the_grace_period(
+    session, app_started, monkeypatch
+):
+    user = await make_sync_user(session)
+    FakeClient.REMOTE[("fa", "fa-user")] = {"a1": title(1)}
+    writing = asyncio.Event()
+
+    async def endless_write(self, entry):
+        writing.set()
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(FakeClient, "save_entry", endless_write)
+    monkeypatch.setattr(main, "WORKER_SHUTDOWN_GRACE", 0.2)
+    async with asyncio.timeout(20):
+        async with app_started():
+            await jobs.enqueue_user_sync(user.id, "manual")
+            await writing.wait()
+            stopping = time.monotonic()
+    assert time.monotonic() - stopping < 0.2 + 3  # the grace period plus closing the run, not "until the sync ends"
+    run = (await session.scalars(select(SyncRun).where(SyncRun.user_id == user.id))).one()
+    assert run.status == "error" and run.finished_at is not None
+
+
+# ---- heartbeats: a run is stale only when it stops making progress ----------------------------------------------
+
+
+def master_has(n: int) -> None:
+    FakeClient.REMOTE[("fa", "fa-user")] = {e.media_id: e for e in (title(i) for i in range(1, n + 1))}
+
+
+@usesfakes
+async def test_every_saved_batch_moves_the_heartbeat_forward(session, monkeypatch):
+    user = await make_sync_user(session)
+    master_has(60)  # three batches: 25, 25 and 10
+    clock = [datetime.now(UTC)]
+
+    def ticking():
+        clock[0] += timedelta(seconds=1)
+        return clock[0]
+
+    monkeypatch.setattr(sync, "_now", ticking)
+    beats: dict[int, datetime | None] = {}  # the run's heartbeat at the last commit seen with each `processed` count
+    real_commit = session.commit
+
+    async def spying_commit():
+        run = next((o for o in session.identity_map.values() if isinstance(o, SyncRun)), None)
+        if run is not None:
+            beats[run.processed] = run.heartbeat_at
+        await real_commit()
+
+    monkeypatch.setattr(session, "commit", spying_commit)
+    await sync.run_sync(session, user.id, "manual")
+    assert None not in (beats[25], beats[50], beats[60])
+    assert beats[25] < beats[50] < beats[60]
+
+
+@usesfakes
+async def test_a_slow_sync_is_never_treated_as_stale_while_it_makes_progress(session, monkeypatch):
+    user = await make_sync_user(session)
+    master_has(3)
+    FakeClient.RATE_LIMITED = {"b1": 2, "b2": 2, "b3": 2}  # six "slow down" waits while writing
+    clock = [datetime.now(UTC)]
+    began = clock[0]
+    monkeypatch.setattr(sync, "_now", lambda: clock[0])
+    seen: list[tuple[bool, int]] = []  # at each step: (a second start refused?, runs closed as interrupted)
+
+    async def time_passes(minutes: int) -> None:
+        clock[0] += timedelta(minutes=minutes)
+        refused = await sync.start_run(session, user.id, "manual") is None
+        seen.append((refused, await sync.close_interrupted_runs(session)))
+
+    real_fetch = FakeClient.fetch_list
+
+    async def slow_read(self, since=None):
+        await time_passes(10)
+        return await real_fetch(self, since)
+
+    async def slow_wait(seconds: float) -> None:
+        await time_passes(6)
+
+    monkeypatch.setattr(FakeClient, "fetch_list", slow_read)
+    monkeypatch.setattr(sync, "_pause", slow_wait)
+    summary = await sync.run_sync(session, user.id, "manual")
+    assert clock[0] - began > 3 * sync.RUN_STALE_AFTER  # far longer than the stale limit, in steps
+    assert seen and seen == [(True, 0)] * len(seen)
+    runs = (await session.scalars(select(SyncRun).where(SyncRun.user_id == user.id))).all()
+    assert [r.status for r in runs] == ["ok"] and summary[str(user.mirrors[0].id)]["create"] == 3

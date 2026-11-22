@@ -249,6 +249,9 @@ class SyncRun(Base):
     summary: Mapped[dict] = mapped_column(JSON, default=dict)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Last sign of progress (start, each read and planning step, each saved batch, each rate-limit wait). A run with no
+    # heartbeat for `sync.RUN_STALE_AFTER` is treated as dead; None (older rows) falls back to `started_at`.
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     changes: Mapped[int] = mapped_column(default=0, server_default="0")  # entries created, updated or deleted
     planned: Mapped[int] = mapped_column(default=0, server_default="0")  # changes the run set out to make so far
     processed: Mapped[int] = mapped_column(default=0, server_default="0")  # of those, attempted (done or failed)

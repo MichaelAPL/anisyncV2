@@ -1,3 +1,4 @@
+import logging
 import unicodedata
 from datetime import date, datetime, timedelta
 from typing import Literal
@@ -5,7 +6,7 @@ from typing import Literal
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 
 from anisync import deletion, jobs, moderation, permissions, ratelimit, sessions, snapshots, switches, sync
 from anisync.api.deps import CurrentUser, Session
@@ -22,6 +23,7 @@ from anisync.models import LinkedAccount, SyncRun, User, UserSession
 from anisync.providers import get_provider
 from anisync.providers.base import ListEntry, RateLimited, ReauthRequired, Status
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["api"])
 
 
@@ -100,8 +102,26 @@ def _account(user: User, account_id: int) -> LinkedAccount:
     return account
 
 
-@router.get("/health")
-async def health() -> OkOut:
+HEALTH_QUERY_TIMEOUT_MS = "2000"  # the deploy proxy gives up after 5 s
+UNHEALTHY = "Service unavailable"  # public: the same answer for every failure, never the reason
+
+
+@router.get("/health", responses={503: {"description": UNHEALTHY}})
+async def health(request: Request, session: Session) -> OkOut:
+    """Healthy = the database answers and, when this process runs the job worker, the worker is still running."""
+    worker = getattr(request.app.state, "worker", None)
+    if worker is not None and worker.done():
+        raise HTTPException(503, UNHEALTHY)
+    try:
+        # Like SET LOCAL: the timeout ends with this transaction.
+        await session.execute(
+            text("SELECT set_config('statement_timeout', :ms, true)"), {"ms": HEALTH_QUERY_TIMEOUT_MS}
+        )
+        await session.execute(text("SELECT 1"))
+        await session.rollback()
+    except Exception as exc:
+        log.warning("health check: the database did not answer (%s)", type(exc).__name__)
+        raise HTTPException(503, UNHEALTHY) from None
     return OkOut()
 
 

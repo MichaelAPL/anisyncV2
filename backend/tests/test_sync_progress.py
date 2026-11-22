@@ -160,15 +160,6 @@ async def test_old_unfinished_runs_become_interrupted_and_other_runs_are_left_al
 
 
 @usesfakes
-async def test_after_a_restart_every_open_run_is_closed(session):
-    user = await make_user(session)
-    young = await run_row(session, user.id, timedelta(minutes=2))
-    await sync.close_interrupted_runs(session, everything=True)
-    await session.refresh(young)
-    assert young.status == "interrupted" and young.finished_at is not None
-
-
-@usesfakes
 async def test_the_daily_housekeeping_closes_stale_runs(session, monkeypatch):
     user = await make_user(session)
     old = await run_row(session, user.id, timedelta(hours=1))

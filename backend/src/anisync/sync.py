@@ -44,6 +44,16 @@ async def client_for(account: LinkedAccount, session: AsyncSession) -> ProviderC
     return provider.client(account.access_token, account.remote_user_id)
 
 
+def _now() -> datetime:
+    return datetime.now(UTC)  # a function of its own so tests can move the clock
+
+
+def _beat(run: SyncRun | None) -> None:
+    """The run is making progress (saved with the caller's next commit). Previews have no run."""
+    if run is not None:
+        run.heartbeat_at = _now()
+
+
 # ---- reading -----------------------------------------------------------------------------------------------
 
 
@@ -74,6 +84,7 @@ async def refresh_snapshot(
     is_master: bool,
     full: bool = False,
     drop_adult: bool = False,
+    run: SyncRun | None = None,
 ) -> ReadResult:
     """Bring the account's snapshot up to date with the provider, as cheaply as the provider allows."""
     provider = get_provider(account.provider)
@@ -84,12 +95,14 @@ async def refresh_snapshot(
         replaced = await snapshots.replace_all(session, account.id, entries, provider.score_step)
         account.last_full_read_at = now
         account.sync_cursor = snapshots.newest_update(entries) or account.sync_cursor
+        _beat(run)
         await session.commit()
         return ReadResult("full", entries, replaced.removed, replaced.drifted)
     if is_master:
         entries = _without_adult(await client.fetch_list(since=account.sync_cursor), drop_adult)
         await snapshots.upsert(session, account.id, entries, provider.score_step)
         account.sync_cursor = max(snapshots.newest_update(entries) or account.sync_cursor, account.sync_cursor)
+        _beat(run)
         await session.commit()
         return ReadResult("incremental", entries)
     return ReadResult("snapshot")  # a mirror between full reads: what we last wrote is what is there
@@ -106,10 +119,12 @@ async def plan_for_mirror(
     mirror_entries: list[ListEntry],
     learn_from: list[ListEntry],
     ignore_adult: bool = False,
+    run: SyncRun | None = None,
 ) -> Plan:
     async with IdMapper(session) as mapper:
         await mapper.learn_from(learn_from)
         id_map = await mapper.resolve(master.provider, mirror.provider, [e.media_id for e in master_entries])
+    _beat(run)
     await session.commit()
     # A master that hides adult titles from us looks shorter than it is: never treat that as "removed from master".
     prune = mirror.prune_missing and not master.hides_adult
@@ -141,8 +156,11 @@ async def _pause(seconds: float) -> None:
     await asyncio.sleep(seconds)  # a function of its own so tests can skip the wait
 
 
-async def _write(client: ProviderClient, change) -> str | None:
-    """One change, waiting out a provider's "slow down" (up to a few times) instead of failing every change after it."""
+async def _write(
+    client: ProviderClient, change, session: AsyncSession | None = None, run: SyncRun | None = None
+) -> str | None:
+    """One change, waiting out a provider's "slow down" (up to a few times) instead of failing every change after it.
+    The run beats before each wait, so a run held up by rate limits never looks stale."""
     for attempt in range(RATE_LIMIT_RETRIES + 1):
         try:
             if change.op == "delete":
@@ -152,6 +170,9 @@ async def _write(client: ProviderClient, change) -> str | None:
         except RateLimited as exc:
             if attempt == RATE_LIMIT_RETRIES:
                 raise
+            if session is not None and run is not None:
+                _beat(run)
+                await session.commit()
             await _pause(min(exc.retry_after or 5.0, MAX_WAIT) + 1)
 
 
@@ -180,6 +201,7 @@ async def apply_plan(
         await snapshots.remove(session, mirror.id, deleted)
         written.clear()
         deleted.clear()
+        _beat(run)
         await session.commit()
 
     if run is not None:
@@ -187,7 +209,7 @@ async def apply_plan(
         await session.commit()
     for done, change in enumerate(plan.changes, start=1):
         try:
-            learned = await _write(client, change)
+            learned = await _write(client, change, session, run)
             if change.op == "delete":
                 deleted.append(change.media_id)
             else:
@@ -223,31 +245,36 @@ async def apply_plan(
     return errors
 
 
-RUN_STALE_AFTER = timedelta(minutes=15)  # an unfinished run older than this is treated as dead, not as running
+# An unfinished run with no heartbeat for this long is treated as dead, not as running. Every step of a sync beats
+# (start, each read, each mirror's planning, each saved batch, each rate-limit wait), so a slow sync never comes close.
+RUN_STALE_AFTER = timedelta(minutes=15)
 _RUN_LOCK = 7001  # advisory-lock namespace: one sync start per user at a time
 
 
+def _last_sign_of_life():
+    return func.coalesce(SyncRun.heartbeat_at, SyncRun.started_at)
+
+
 async def running_run(session: AsyncSession, user_id: int) -> SyncRun | None:
-    """The user's sync that is in progress right now, if any."""
+    """The user's sync that is in progress right now, if any (unfinished and not stale)."""
     return await session.scalar(
         select(SyncRun)
         .where(
             SyncRun.user_id == user_id,
             SyncRun.finished_at.is_(None),
-            SyncRun.started_at > datetime.now(UTC) - RUN_STALE_AFTER,
+            _last_sign_of_life() > _now() - RUN_STALE_AFTER,
         )
         .order_by(SyncRun.id.desc())
         .limit(1)
     )
 
 
-async def close_interrupted_runs(session: AsyncSession, everything: bool = False) -> int:
+async def close_interrupted_runs(session: AsyncSession) -> int:
     """Mark runs that stopped halfway (the process died or was restarted) as `interrupted` instead of leaving them
-    "running". `everything` also closes young ones: right after a start no run of this process can be in progress."""
-    stmt = update(SyncRun).where(SyncRun.finished_at.is_(None))
-    if not everything:
-        stmt = stmt.where(SyncRun.started_at <= datetime.now(UTC) - RUN_STALE_AFTER)
-    result = await session.execute(stmt.values(status="interrupted", finished_at=datetime.now(UTC)))
+    "running". Only stale runs: during a rolling deploy the old process may still be syncing, and its runs keep
+    beating. Uses the same staleness rule as `running_run`, so a run is never both closed and blocking."""
+    stmt = update(SyncRun).where(SyncRun.finished_at.is_(None), _last_sign_of_life() <= _now() - RUN_STALE_AFTER)
+    result = await session.execute(stmt.values(status="interrupted", finished_at=_now()))
     await session.commit()
     return result.rowcount or 0
 
@@ -258,7 +285,7 @@ async def start_run(session: AsyncSession, user_id: int, trigger: str) -> SyncRu
     await session.execute(select(func.pg_advisory_xact_lock(_RUN_LOCK, user_id)))
     if await running_run(session, user_id) is not None:
         return None  # the lock is released when this transaction ends
-    run = SyncRun(user_id=user_id, trigger=trigger, summary={})
+    run = SyncRun(user_id=user_id, trigger=trigger, summary={}, heartbeat_at=_now())
     session.add(run)
     await session.commit()
     return run
@@ -310,7 +337,7 @@ async def _sync_mirrors(
     master_client = await client_for(master, session)
     ignore_adult = user.ignore_adult_titles
     master_read = await refresh_snapshot(
-        session, master, master_client, is_master=True, full=full, drop_adult=ignore_adult
+        session, master, master_client, is_master=True, full=full, drop_adult=ignore_adult, run=run
     )
     if master_read.mode == "full":  # weekly; in between, the user can say "I changed it" (POST .../recheck-adult)
         await check_adult_filter(master, master_client)
@@ -328,7 +355,7 @@ async def _sync_mirrors(
             continue
         try:
             client = await client_for(mirror, session)
-            read = await refresh_snapshot(session, mirror, client, is_master=False, full=full)
+            read = await refresh_snapshot(session, mirror, client, is_master=False, full=full, run=run)
             if read.mode == "full":
                 await check_adult_filter(mirror, client)
             mirror_entries = await snapshots.load(session, mirror.id)
@@ -340,6 +367,7 @@ async def _sync_mirrors(
                 mirror_entries,
                 master_read.received + read.received,
                 ignore_adult,
+                run,
             )
             result: dict = plan.counts() | {"unmapped_titles": [e.title for e in plan.unmapped][:50], "read": read.mode}
             if plan.adult_skipped:
