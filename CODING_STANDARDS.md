@@ -50,6 +50,13 @@ already enforce (SQL built from strings, formatting, the public-route list, resp
 - Busy and disabled states come from server state (for example the list of runs), not from what the current tab did.
   Another tab, the scheduler or an admin can start the same work. (945dd0b)
 
+## Deploy and operations scripts
+
+- Input a script feeds into a container (a heredoc, a pipe, `< file`) needs stdin attached: `docker run -i` or
+  `docker exec -i`. Without it the input is silently dropped, the command reads nothing and exits 0, so a check built
+  that way passes without running. A script that checks something also fails when the check prints no verdict.
+  (2c86c31: the restore drill's token-decrypt check never ran)
+
 ## Tests
 
 - Every client parse/serialize change gets a respx test (prefer recorded fixtures), every engine rule a unit or
