@@ -7,7 +7,7 @@ import httpx
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from anisync import jobs, logs, metrics, moderation, sync
+from anisync import jobs, logs, metrics, moderation, sentry, sync
 from anisync.api import admin, admin_dataset, admin_site, admin_syncs, admin_titles, admin_users, auth, public, routes
 from anisync.config import get_settings
 from anisync.db import SessionLocal
@@ -18,6 +18,7 @@ from anisync.security import CsrfMiddleware, RequestIdMiddleware
 logs.configure()
 log = logging.getLogger(__name__)
 settings = get_settings()
+sentry.init(settings.sentry_dsn)  # off unless SENTRY_DSN is set; scrubbed, see sentry.py
 
 
 # How long a stopping app lets running jobs finish before cancelling them. The container is killed some seconds after

@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from anisync.config import Settings
 from anisync.db import get_session
 from anisync.main import app
+from anisync.providers.base import credentials
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -35,7 +36,18 @@ async def test_validation_errors_do_not_become_500s(client):
     assert (await client.put("/api/list/1", json={"status": "nonsense"})).status_code in (401, 422)
 
 
-def test_production_refuses_to_start_with_weak_secrets():
+@pytest.fixture
+def provider_credentials(monkeypatch):
+    """Production needs every sign-in provider's credentials; tests set them explicitly, never from a .env file."""
+    for name in ("MAL", "ANILIST"):
+        monkeypatch.setenv(f"{name}_CLIENT_ID", "id")
+        monkeypatch.setenv(f"{name}_CLIENT_SECRET", "secret")
+    credentials.cache_clear()  # credentials are read once per process
+    yield
+    credentials.cache_clear()
+
+
+def test_production_refuses_to_start_with_weak_secrets(provider_credentials):
     base = {"public_url": "https://anisync.example", "_env_file": None}
     with pytest.raises(ValidationError, match="SESSION_SECRET"):
         Settings(**base, token_encryption_key="k")  # the development default
@@ -82,3 +94,57 @@ def test_the_code_base_builds_no_sql_from_strings():
         cwd=BACKEND,
     )
     assert result.returncode == 0, result.stdout
+
+
+def test_production_refuses_to_start_without_sign_in_provider_credentials(provider_credentials, monkeypatch):
+    base = {"public_url": "https://anisync.example", "_env_file": None, "session_secret": "x" * 40}
+    monkeypatch.setenv("MAL_CLIENT_SECRET", "")
+    credentials.cache_clear()
+    with pytest.raises(ValidationError, match="MAL_CLIENT_SECRET"):
+        Settings(**base, token_encryption_keys="a")
+    monkeypatch.setenv("MAL_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("ANILIST_CLIENT_ID", "")
+    credentials.cache_clear()
+    with pytest.raises(ValidationError, match="ANILIST_CLIENT_ID"):
+        Settings(**base, token_encryption_keys="a")
+
+
+def test_a_trailing_slash_in_the_public_url_does_not_break_callback_urls():
+    settings = Settings(public_url="http://localhost:5173/", _env_file=None)
+    assert settings.public_url == "http://localhost:5173"
+
+
+def test_error_reports_carry_no_oauth_codes_tokens_or_secrets():
+    from anisync import sentry
+
+    event = {
+        "message": "refresh failed: Bearer abcdefgh12345678",
+        "exception": {"values": [{"type": "HTTPStatusError", "value": "400 for /token?code=abc123&state=xyz789"}]},
+        "request": {
+            "url": "https://anisync.example/auth/mal/callback?code=abc123&state=xyz789",
+            "query_string": "code=abc123&state=xyz789",
+            "data": {"password": "hunter2"},
+            "cookies": {"anisync_session": "s3cret"},
+            "headers": {"Authorization": "Bearer abcdefgh12345678", "Cookie": "anisync_session=s3cret"},
+        },
+        "breadcrumbs": {"values": [{"message": "GET https://api.example/x?access_token=tok999"}]},
+    }
+    cleaned = str(sentry.scrub_event(event, {}))
+    for secret in ("abc123", "xyz789", "abcdefgh12345678", "hunter2", "s3cret", "tok999"):
+        assert secret not in cleaned
+    assert sentry.scrub_breadcrumb({"message": "token=tok999"}, {})["message"] == "token=[redacted]"
+
+
+def test_error_reporting_is_off_without_a_dsn_and_never_sends_locals_or_bodies(monkeypatch):
+    from anisync import sentry
+
+    calls = []
+    monkeypatch.setattr(sentry.sentry_sdk, "init", lambda **options: calls.append(options))
+    assert sentry.init("") is False and calls == []
+    assert sentry.init("https://key@o1.ingest.sentry.io/1") is True
+    [options] = calls
+    assert options["send_default_pii"] is False
+    assert options["include_local_variables"] is False
+    assert options["max_request_body_size"] == "never"
+    assert options["traces_sample_rate"] == 0
+    assert options["before_send"] is sentry.scrub_event and options["before_breadcrumb"] is sentry.scrub_breadcrumb

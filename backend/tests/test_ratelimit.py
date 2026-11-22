@@ -112,3 +112,16 @@ async def test_addresses_are_stored_hashed(client, session):
     await client.get("/auth/mal/login")
     key = (await session.scalars(select(RateLimitHit.key))).one()
     assert key.startswith("oauth:ip:") and "127.0.0.1" not in key and len(key) < 128
+
+
+def _request_from(host: str):
+    from starlette.requests import Request
+
+    return Request({"type": "http", "client": (host, 1234), "headers": []})
+
+
+def test_ipv6_addresses_in_one_64_share_a_bucket_and_ipv4_is_unchanged():
+    same = ratelimit.client_id(_request_from("2001:db8:1:2::1"))
+    assert same == ratelimit.client_id(_request_from("2001:db8:1:2:ffff:ffff:ffff:ffff"))
+    assert same != ratelimit.client_id(_request_from("2001:db8:1:3::1"))
+    assert ratelimit.client_id(_request_from("203.0.113.7")) != ratelimit.client_id(_request_from("203.0.113.8"))

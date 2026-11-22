@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import PrivateAttr, model_validator
+from pydantic import PrivateAttr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_SESSION_SECRET = "dev-only-change-me"  # noqa: S105 (a development default; production refuses it)
@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     # (see ROADMAP → Decisions, funding).
     donation_url: str = ""
 
+    # Error reporting (Sentry); off while empty.
+    sentry_dsn: str = ""
+
+    @field_validator("public_url")
+    @classmethod
+    def _no_trailing_slash(cls, value: str) -> str:
+        return value.rstrip("/")  # callback URLs are built as {public_url}/auth/...
+
     @property
     def admin_ids(self) -> set[int]:
         return {int(part) for part in self.admin_user_ids.split(",") if part.strip().isdigit()}
@@ -76,6 +84,7 @@ class Settings(BaseSettings):
                 problems.append("SESSION_SECRET must be a random value of at least 32 characters")
             if not (self.token_encryption_keys.strip() or self.token_encryption_key):
                 problems.append("TOKEN_ENCRYPTION_KEYS must be set (`anisync generate-key`)")
+            problems += _missing_sign_in_credentials()
             if problems:
                 raise ValueError("; ".join(problems))
         return self
@@ -112,6 +121,23 @@ class Settings(BaseSettings):
             if url.startswith(prefix):
                 return "postgresql+psycopg://" + url[len(prefix) :]
         return url
+
+
+def _missing_sign_in_credentials() -> list[str]:
+    """Every provider people sign in with needs its OAuth app credentials, or sign-in fails only once someone tries."""
+    from anisync.providers import all_providers
+    from anisync.providers.base import credentials
+
+    problems = []
+    for provider in all_providers():
+        if provider.can_sign_in:
+            creds = credentials(provider.id)
+            prefix = provider.id.upper()
+            if not creds.client_id:
+                problems.append(f"{prefix}_CLIENT_ID must be set")
+            if not creds.client_secret:
+                problems.append(f"{prefix}_CLIENT_SECRET must be set")
+    return problems
 
 
 @lru_cache

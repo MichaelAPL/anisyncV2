@@ -2,11 +2,14 @@
 
 Each attempt stores one row under a key like `password-link:ip:<hash>`. Callers are refused with 429 and a
 `Retry-After` once they've made `limit` attempts inside `window`. IPs are stored only as a salted hash and old rows
-are purged by the housekeeping job. Behind a proxy, run uvicorn with `--proxy-headers --forwarded-allow-ips=<proxy>`
-so `request.client` is the real client address.
+are purged by the housekeeping job. In production uvicorn runs with `--proxy-headers` and trusts forwarded headers
+only from the private network the proxies sit on (FORWARDED_ALLOW_IPS, see config/deploy.yml), so `request.client` is
+the visitor's real address and a client-supplied X-Forwarded-For is ignored. Never trust "*": uvicorn would then take
+the leftmost, client-controlled entry.
 """
 
 import hashlib
+import ipaddress
 import math
 from datetime import UTC, datetime, timedelta
 
@@ -19,8 +22,19 @@ from anisync.config import get_settings
 from anisync.models import RateLimitHit
 
 
+def _bucket(host: str) -> str:
+    """One rate-limit bucket per IPv4 address, and per /64 for IPv6: one host controls a whole /64."""
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return host
+    if address.version == 6:
+        return str(ipaddress.ip_network(f"{address}/64", strict=False))
+    return str(address)
+
+
 def client_id(request: Request) -> str:
-    host = request.client.host if request.client else "unknown"
+    host = _bucket(request.client.host) if request.client else "unknown"
     return hashlib.sha256(f"{get_settings().session_secret}:{host}".encode()).hexdigest()[:24]
 
 
