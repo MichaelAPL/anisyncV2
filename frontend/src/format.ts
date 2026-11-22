@@ -15,7 +15,9 @@ export const clock = (iso: string) =>
 
 export const utcHour = (iso: string) => new Date(iso).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }) + ' UTC'
 
-/** A run that has not finished counts as running for up to 15 minutes, so a crashed one can't block the UI forever. */
-export function isRunning(run: { trigger: string; started_at: string; finished_at: string | null }): boolean {
-  return run.trigger !== 'preview' && !run.finished_at && Date.now() - new Date(run.started_at).getTime() < 15 * 60_000
+/** An unfinished run counts as running until it has gone 15 minutes without a sign of progress (its last heartbeat, or
+ * its start), the same rule the server uses, so a crashed one can't block the UI forever but a long one isn't cut short. */
+export function isRunning(run: { trigger: string; started_at: string; heartbeat_at?: string | null; finished_at: string | null }): boolean {
+  const lastSign = run.heartbeat_at ?? run.started_at
+  return run.trigger !== 'preview' && !run.finished_at && Date.now() - new Date(lastSign).getTime() < 15 * 60_000
 }

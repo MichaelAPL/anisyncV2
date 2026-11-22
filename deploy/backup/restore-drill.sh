@@ -78,7 +78,8 @@ common=(--network "$net" -e DATABASE_URL="$app_url" -e TOKEN_ENCRYPTION_KEYS="$T
         -e PUBLIC_URL=http://localhost:8000 -e RUN_WORKER_IN_PROCESS=false)
 
 echo "drill: checking that a stored token decrypts with the escrowed key"
-docker run --rm "${common[@]}" "$APP_IMAGE" python - <<'PY'
+# -i: without it docker never hands the script below to python, which then "succeeds" having done nothing.
+decrypt_check=$(docker run --rm -i "${common[@]}" "$APP_IMAGE" python - <<'PY'
 import asyncio
 
 from sqlalchemy import select
@@ -99,6 +100,12 @@ async def main() -> None:
 
 asyncio.run(main())
 PY
+)
+echo "$decrypt_check"
+case "$decrypt_check" in
+  *decrypts*|*"no linked accounts"*) ;;
+  *) echo "drill: the token check produced no verdict" >&2; exit 1 ;;
+esac
 
 echo "drill: booting the app against the copy (no worker, development settings)"
 docker run -d --name "$app" "${common[@]}" "$APP_IMAGE" >/dev/null

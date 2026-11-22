@@ -148,3 +148,11 @@ def test_error_reporting_is_off_without_a_dsn_and_never_sends_locals_or_bodies(m
     assert options["max_request_body_size"] == "never"
     assert options["traces_sample_rate"] == 0
     assert options["before_send"] is sentry.scrub_event and options["before_breadcrumb"] is sentry.scrub_breadcrumb
+
+
+def test_error_reports_scrub_log_arguments_and_exception_objects_too():
+    from anisync import sentry
+
+    event = {"logentry": {"message": "refresh failed: %s %s", "params": ("code=abc123", ValueError("token=tok999"))}}
+    cleaned = str(sentry.scrub_event(event, {}))
+    assert "abc123" not in cleaned and "tok999" not in cleaned

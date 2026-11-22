@@ -20,8 +20,10 @@ def _clean(value: Any) -> Any:
         return redact(value)
     if isinstance(value, dict):
         return {key: _clean(item) for key, item in value.items()}
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):  # log arguments arrive as a tuple
         return [_clean(item) for item in value]
+    if isinstance(value, BaseException):
+        return redact(str(value))
     return value
 
 

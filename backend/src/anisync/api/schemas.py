@@ -88,5 +88,6 @@ class SyncRunOut(BaseModel):
     summary: dict[str, MirrorResultOut]
     started_at: datetime
     finished_at: datetime | None
+    heartbeat_at: datetime | None = None  # last sign of progress; the server treats a run as dead 15 min after it
     planned: int = 0  # while running: how many changes it set out to make so far...
     processed: int = 0  # ...and how many of them are done (or failed)

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { relative } from './format'
+import { isRunning, relative } from './format'
 import { isDark, setTheme } from './theme'
 import { safeImage } from './ui/images'
 
@@ -47,5 +47,22 @@ describe('theme', () => {
     expect(document.documentElement.className).toBe('as theme-auto')
     expect(localStorage.getItem('anisync-theme')).toBeNull()
     expect(isDark('light')).toBe(false)
+  })
+})
+
+describe('isRunning', () => {
+  const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString()
+
+  it('keeps a long sync running while it still reports progress', () => {
+    expect(isRunning({ trigger: 'manual', started_at: minutesAgo(40), heartbeat_at: minutesAgo(1), finished_at: null })).toBe(true)
+  })
+
+  it('gives up on a run that stopped reporting for 15 minutes', () => {
+    expect(isRunning({ trigger: 'manual', started_at: minutesAgo(40), heartbeat_at: minutesAgo(16), finished_at: null })).toBe(false)
+  })
+
+  it('falls back to the start time when a run has no heartbeat', () => {
+    expect(isRunning({ trigger: 'manual', started_at: minutesAgo(5), finished_at: null })).toBe(true)
+    expect(isRunning({ trigger: 'manual', started_at: minutesAgo(16), finished_at: null })).toBe(false)
   })
 })

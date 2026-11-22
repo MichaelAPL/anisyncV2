@@ -22,7 +22,7 @@ How to go from an empty VPS to a tested production deployment, and how to keep i
 | VPS | 2 GB RAM or more (Postgres, the app, and the ID dataset import's ~120 MB peak). Debian/Ubuntu LTS. |
 | Tailscale | Your machine and the VPS on the same tailnet. |
 | Cloudflare Tunnel | Zero Trust → Networks → Tunnels → create a tunnel (remotely managed). Copy its token. Public hostname: `ANISYNC_DOMAIN` → service `http://kamal-proxy:80`. Add nothing else (no SSH, no database). |
-| R2 bucket | One bucket for backups. Lifecycle rule: delete `db/` objects after 30 days. Bucket Lock on `db/` for 30 days, so a compromised server cannot delete recent backups. An API token scoped to this bucket only (object read & write) for the server, and a read-only one for restore drills. |
+| R2 bucket | One bucket for backups. Lifecycle rules: delete `db/` objects after 30 days, and `incoming/` objects after 2 days (uploads land there and are moved into `db/` only once complete). Bucket Lock on `db/` for 30 days, so a compromised server cannot delete recent backups. An API token scoped to this bucket only (object read & write) for the server, and a read-only one for restore drills. |
 | age key pair | `age-keygen -o anisync-backup.key`. The public key (`age1…`) goes to the server; the private key goes to your password manager and never to the server. |
 | Sentry | A project for the backend; copy the DSN. |
 | Uptime monitor | Better Stack or UptimeRobot: (1) an HTTP check on `https://ANISYNC_DOMAIN/api/health`; (2) a heartbeat (cron) check expecting one ping a day with about 26 hours of grace. Its URL is `BACKUP_HEARTBEAT_URL`. |

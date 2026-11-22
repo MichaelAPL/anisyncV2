@@ -128,6 +128,7 @@ async def test_sync_history_follows_the_response_schema(alice, session):
         "summary",
         "started_at",
         "finished_at",
+        "heartbeat_at",
         "planned",
         "processed",
     }
@@ -210,3 +211,15 @@ async def test_health_fails_when_the_database_does_not_answer(client, session, m
     response = await client.get("/api/health")
     assert response.status_code == 503 and response.json() == UNHEALTHY
     assert "anisync" not in response.text and "5432" not in response.text
+
+
+async def test_runs_carry_their_last_heartbeat_so_the_app_judges_liveness_like_the_server(alice, session):
+    from datetime import UTC, datetime, timedelta
+
+    c, user, *_ = alice
+    beat = datetime.now(UTC) - timedelta(seconds=30)
+    session.add(SyncRun(user_id=user.id, trigger="manual", started_at=beat - timedelta(minutes=40), heartbeat_at=beat))
+    await session.commit()
+    [run] = (await c.get("/api/sync/runs")).json()
+    assert run["heartbeat_at"] is not None
+    assert datetime.fromisoformat(run["heartbeat_at"]) == beat

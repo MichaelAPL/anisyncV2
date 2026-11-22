@@ -23,21 +23,26 @@ ping() {
   [ -n "${BACKUP_HEARTBEAT_URL:-}" ] && curl -fsS -m 10 --retry 3 -o /dev/null "$1" || true
 }
 
-object="db/anisync-$(date -u +%Y-%m-%dT%H%MZ).dump.age"
+name="anisync-$(date -u +%Y-%m-%dT%H%MZ).dump.age"
+# Upload under incoming/ and move into db/ only once it is complete, so a dump cut short never sits in db/ looking
+# like the newest backup (db/ is also the prefix the Bucket Lock protects, so a bad object there couldn't be deleted).
+incoming="r2:${R2_BUCKET}/incoming/${name}"
+final="r2:${R2_BUCKET}/db/${name}"
 
-if pg_dump --format=custom --no-password \
-    | age --encrypt --recipient "$AGE_RECIPIENT" \
-    | rclone rcat "r2:${R2_BUCKET}/${object}"; then
-  size=$(rclone size --json "r2:${R2_BUCKET}/${object}" | sed -n 's/.*"bytes":\([0-9]*\).*/\1/p')
-  if [ -z "$size" ] || [ "$size" -lt 1024 ]; then
-    echo "backup: ${object} is suspiciously small (${size:-unknown} bytes)" >&2
-    ping "${BACKUP_HEARTBEAT_URL:-}/fail"
-    exit 1
-  fi
-  echo "backup: wrote ${object} (${size} bytes)"
-  ping "${BACKUP_HEARTBEAT_URL:-}"
-else
-  echo "backup: FAILED writing ${object}" >&2
+fail() {
+  echo "backup: FAILED: $1" >&2
+  rclone deletefile "$incoming" >/dev/null 2>&1 || true
   ping "${BACKUP_HEARTBEAT_URL:-}/fail"
   exit 1
+}
+
+pg_dump --format=custom --no-password \
+  | age --encrypt --recipient "$AGE_RECIPIENT" \
+  | rclone rcat "$incoming" || fail "writing ${name}"
+size=$(rclone size --json "$incoming" | sed -n 's/.*"bytes":\([0-9]*\).*/\1/p') || true
+if [ -z "$size" ] || [ "$size" -lt 1024 ]; then
+  fail "${name} is suspiciously small (${size:-unknown} bytes)"
 fi
+rclone moveto "$incoming" "$final" || fail "moving ${name} into db/"
+echo "backup: wrote db/${name} (${size} bytes)"
+ping "${BACKUP_HEARTBEAT_URL:-}"

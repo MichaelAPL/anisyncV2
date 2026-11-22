@@ -19,7 +19,9 @@ host="${KAMAL_HOSTS%%,*}"
 image="localhost:5555/anisync:${KAMAL_VERSION:?KAMAL_VERSION not set}"
 db_container="anisync-db"
 
-remote() { ssh -o BatchMode=yes "deploy@${host}" "$@"; }
+# ssh joins its arguments into one string that the server's shell parses again, so quote each one for that shell
+# (SQL like `count(*)` would otherwise be a syntax error over there).
+remote() { ssh -o BatchMode=yes "deploy@${host}" "$(printf '%q ' "$@")"; }
 migrator() { remote docker run --rm --network kamal --env-file /etc/anisync/migrator.env "$image" "$@"; }
 superuser_sql() { remote docker exec -i "$db_container" psql -v ON_ERROR_STOP=1 -U postgres -d anisync "$@"; }
 

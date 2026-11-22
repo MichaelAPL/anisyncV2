@@ -81,6 +81,7 @@ export interface SyncRun {
   summary: Record<string, MirrorResult>
   started_at: string
   finished_at: string | null
+  heartbeat_at?: string | null
   planned: number
   processed: number
 }
