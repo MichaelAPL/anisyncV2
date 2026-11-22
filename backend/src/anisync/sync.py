@@ -156,9 +156,7 @@ async def _pause(seconds: float) -> None:
     await asyncio.sleep(seconds)  # a function of its own so tests can skip the wait
 
 
-async def _write(
-    client: ProviderClient, change, session: AsyncSession | None = None, run: SyncRun | None = None
-) -> str | None:
+async def _write(client: ProviderClient, change, session: AsyncSession, run: SyncRun | None) -> str | None:
     """One change, waiting out a provider's "slow down" (up to a few times) instead of failing every change after it.
     The run beats before each wait, so a run held up by rate limits never looks stale."""
     for attempt in range(RATE_LIMIT_RETRIES + 1):
@@ -170,7 +168,7 @@ async def _write(
         except RateLimited as exc:
             if attempt == RATE_LIMIT_RETRIES:
                 raise
-            if session is not None and run is not None:
+            if run is not None:
                 _beat(run)
                 await session.commit()
             await _pause(min(exc.retry_after or 5.0, MAX_WAIT) + 1)
