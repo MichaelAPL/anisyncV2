@@ -1,0 +1,128 @@
+# Kamal 2 deployment for AniSync. Full walkthrough: docs/deploy.md.
+#
+# Shape: one VPS reached only over Tailscale. The public reaches the app only through a Cloudflare Tunnel
+# (the cloudflared accessory), which forwards to kamal-proxy over the private `kamal` Docker network.
+# Nothing here publishes a port on the host: Docker-published ports bypass ufw.
+#
+# Values that differ per installation come from your shell environment when you run kamal:
+#   ANISYNC_HOST    the VPS's Tailscale name, e.g. anisync.your-tailnet.ts.net
+#   ANISYNC_DOMAIN  the public hostname, e.g. anisync.example.org
+# Secrets are listed in .kamal/secrets.
+
+service: anisync
+image: anisync
+
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("ANISYNC_HOST") %>
+
+ssh:
+  user: deploy
+
+# Kamal runs a registry on your machine and the server pulls through the SSH connection, so no external registry
+# account is needed. Switch to ghcr.io if deploys ever run from CI.
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+
+# Seconds a stopping container gets before it is killed. The in-process worker gives a running sync about 20 s to
+# be cancelled and closed as an error, so this must stay above that.
+drain_timeout: 30
+
+proxy:
+  host: <%= ENV.fetch("ANISYNC_DOMAIN") %>
+  app_port: 8000
+  # TLS ends at Cloudflare; the tunnel leg is encrypted by cloudflared and the last hop is the private network.
+  ssl: false
+  # Keep the visitor's X-Forwarded-For chain. It is only on by default while ssl is false; the app's per-IP rate
+  # limits depend on it, so it is set explicitly.
+  forward_headers: true
+  healthcheck:
+    path: /api/health
+    interval: 3
+    timeout: 3
+  run:
+    # No 0.0.0.0:80/443 on the host. Changing this on an existing server needs `kamal proxy reboot`.
+    publish: false
+
+env:
+  clear:
+    PUBLIC_URL: https://<%= ENV.fetch("ANISYNC_DOMAIN") %>
+    RUN_WORKER_IN_PROCESS: "true"
+    # Closed until MAL and AniList answer in writing. Set explicitly so a PUBLIC_URL typo cannot open it.
+    SIGNUP_ALLOWLIST_ENABLED: "true"
+    # uvicorn trusts forwarded headers only from the pinned `kamal` network (see docs/deploy.md: create the network
+    # with this subnet before `kamal setup`). Never use "*": it would trust a client-supplied X-Forwarded-For.
+    FORWARDED_ALLOW_IPS: 172.30.0.0/16
+  secret:
+    # anisync_app role only; the owner role's password never reaches the app.
+    - DATABASE_URL
+    - SESSION_SECRET
+    - TOKEN_ENCRYPTION_KEYS
+    - MAL_CLIENT_ID
+    - MAL_CLIENT_SECRET
+    - ANILIST_CLIENT_ID
+    - ANILIST_CLIENT_SECRET
+    - SENTRY_DSN
+    # Not secret, but changed often during the closed beta without a commit.
+    - SIGNUP_ALLOWLIST
+    - ADMIN_USER_IDS
+
+accessories:
+  db:
+    # Pin the minor version and bump it deliberately. Postgres 18 images move the data directory.
+    image: postgres:17-bookworm
+    host: <%= ENV.fetch("ANISYNC_HOST") %>
+    # No `port:`: the app reaches it as anisync-db on the kamal network.
+    env:
+      clear:
+        POSTGRES_DB: anisync
+        POSTGRES_USER: postgres
+      secret:
+        - POSTGRES_PASSWORD
+        - ANISYNC_OWNER_PASSWORD
+        - ANISYNC_APP_PASSWORD
+        - ANISYNC_BACKUP_PASSWORD
+    files:
+      - deploy/postgres-init/01-roles.sh:/docker-entrypoint-initdb.d/01-roles.sh
+      - deploy/postgres-init/02-grants.sql:/docker-entrypoint-initdb.d/02-grants.sql
+    directories:
+      - data:/var/lib/postgresql/data
+    options:
+      restart: unless-stopped
+      shm-size: 256m
+
+  cloudflared:
+    # Pin an exact release tag; never :latest.
+    image: cloudflare/cloudflared:2026.11.0
+    host: <%= ENV.fetch("ANISYNC_HOST") %>
+    cmd: tunnel --no-autoupdate run
+    env:
+      secret:
+        - TUNNEL_TOKEN
+    options:
+      restart: unless-stopped
+
+  backup:
+    # Built on the server from deploy/backup (docs/deploy.md); holds only the read-only backup role.
+    image: anisync-backup:1
+    host: <%= ENV.fetch("ANISYNC_HOST") %>
+    env:
+      clear:
+        PGHOST: anisync-db
+        PGDATABASE: anisync
+        PGUSER: anisync_backup
+        BACKUP_AT: "03:30"
+      secret:
+        - PGPASSWORD
+        - AGE_RECIPIENT
+        - R2_ACCOUNT_ID
+        - R2_ACCESS_KEY_ID
+        - R2_SECRET_ACCESS_KEY
+        - R2_BUCKET
+        - BACKUP_HEARTBEAT_URL
+    options:
+      restart: unless-stopped

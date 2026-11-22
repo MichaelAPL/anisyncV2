@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Runs on your machine after the new image is built and delivered to the server, before it takes traffic.
+# It migrates the database as the owner role, so the app container never needs schema rights.
+#
+# Server prerequisites (docs/deploy.md):
+#   /etc/anisync/migrator.env  mode 0600, owned by the deploy user, containing
+#     DATABASE_URL=postgresql://anisync_owner:<password>@anisync-db:5432/anisync
+#
+# Migrations are expand-only (add, never drop or rename in the deploy that stops using something), so the
+# previous image keeps working against the migrated schema and a rollback needs no migration.
+set -euo pipefail
+
+if [ "${KAMAL_COMMAND:-}" = "rollback" ]; then
+  echo "pre-deploy: rollback, skipping migrations (the schema stays compatible with the previous image)"
+  exit 0
+fi
+
+host="${KAMAL_HOSTS%%,*}"
+image="localhost:5555/anisync:${KAMAL_VERSION:?KAMAL_VERSION not set}"
+db_container="anisync-db"
+
+remote() { ssh -o BatchMode=yes "deploy@${host}" "$@"; }
+migrator() { remote docker run --rm --network kamal --env-file /etc/anisync/migrator.env "$image" "$@"; }
+superuser_sql() { remote docker exec -i "$db_container" psql -v ON_ERROR_STOP=1 -U postgres -d anisync "$@"; }
+
+echo "pre-deploy: checking that ${image} is on ${host}"
+remote docker image inspect "$image" >/dev/null
+
+echo "pre-deploy: alembic upgrade head"
+migrator alembic upgrade head
+
+# Applying the Procrastinate schema twice fails, so only apply it to a database that doesn't have it yet.
+has_jobs_table=$(superuser_sql -tAc "SELECT to_regclass('public.procrastinate_jobs') IS NOT NULL")
+if [ "$has_jobs_table" != "t" ]; then
+  echo "pre-deploy: applying the Procrastinate schema"
+  migrator procrastinate --app=anisync.jobs.app schema --apply
+fi
+
+# Fill the cross-provider ID mapping on a fresh database only; the weekly job keeps it current afterwards.
+media_rows=$(superuser_sql -tAc "SELECT count(*) FROM media")
+if [ "$media_rows" = "0" ]; then
+  echo "pre-deploy: seeding the ID mapping (first deploy)"
+  migrator python -m anisync.seed
+fi
+
+echo "pre-deploy: re-applying grants for the app role"
+superuser_sql < deploy/postgres-init/02-grants.sql
+
+echo "pre-deploy: done"
