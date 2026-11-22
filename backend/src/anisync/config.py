@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import model_validator
+from pydantic import PrivateAttr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_SESSION_SECRET = "dev-only-change-me"  # noqa: S105 (a development default; production refuses it)
@@ -42,9 +42,22 @@ class Settings(BaseSettings):
     # Comma-separated AniSync user ids that are made admins when they exist (startup and sign-in). Never demotes.
     admin_user_ids: str = ""
 
+    # Closed access: while enabled, only the provider accounts listed in SIGNUP_ALLOWLIST may create an AniSync user.
+    # Signed-in users still link more accounts, and accounts already linked still sign in. Unset = on in production.
+    signup_allowlist_enabled: bool | None = None
+    # Comma-separated `provider:account id` (the provider's stable account id, never the username: usernames change).
+    # A refused sign-in logs the `provider:account id` to add here.
+    signup_allowlist: str = ""
+    _signup_allowlist_ids: frozenset[tuple[str, str]] = PrivateAttr(default=frozenset())
+
     @property
     def admin_ids(self) -> set[int]:
         return {int(part) for part in self.admin_user_ids.split(",") if part.strip().isdigit()}
+
+    @property
+    def signup_allowlist_ids(self) -> frozenset[tuple[str, str]]:
+        """SIGNUP_ALLOWLIST as (provider id, account id) pairs."""
+        return self._signup_allowlist_ids
 
     @property
     def is_production(self) -> bool:
@@ -61,6 +74,25 @@ class Settings(BaseSettings):
                 problems.append("TOKEN_ENCRYPTION_KEYS must be set (`anisync generate-key`)")
             if problems:
                 raise ValueError("; ".join(problems))
+        return self
+
+    @model_validator(mode="after")
+    def _parse_signup_allowlist(self) -> "Settings":
+        from anisync.providers import is_registered
+
+        if self.signup_allowlist_enabled is None:
+            self.signup_allowlist_enabled = self.is_production
+        entries = set()
+        for raw in self.signup_allowlist.split(","):
+            if not (entry := raw.strip()):
+                continue
+            provider, _, remote_id = (part.strip() for part in entry.partition(":"))
+            if not remote_id or not is_registered(provider):
+                raise ValueError(
+                    f"SIGNUP_ALLOWLIST entry {entry!r} must be `provider:account id` with a known provider"
+                )
+            entries.add((provider, remote_id))
+        self._signup_allowlist_ids = frozenset(entries)
         return self
 
     @property

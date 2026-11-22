@@ -97,3 +97,21 @@ export function NotFound() {
     </>
   )
 }
+
+/** Where a sign-in lands when the account isn't invited yet (the backend refused to create a user for it). */
+export function NotOpen() {
+  return (
+    <>
+      <PublicHeader />
+      <main className="page page-narrow" style={{ alignItems: 'center', textAlign: 'center', paddingTop: 64, gap: 20 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 96, height: 96, borderRadius: 32, background: 'var(--tertiary-container)', color: 'var(--on-tertiary-container)' }}>
+          <Icon name="lock" size={44} stroke={1.8} />
+        </span>
+        <h1 className="headline-l">AniSync isn't open yet</h1>
+        <p className="body-l muted" style={{ maxWidth: 520 }}>Only invited accounts can sign up for now, so no AniSync account was created and nothing was saved. Your lists on MyAnimeList, AniList and Kitsu are untouched.</p>
+        <Link to="/" className="btn btn-filled">Back to AniSync</Link>
+      </main>
+      <Footer />
+    </>
+  )
+}

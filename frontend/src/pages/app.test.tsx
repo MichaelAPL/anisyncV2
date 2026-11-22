@@ -364,3 +364,13 @@ describe('settings', () => {
     await waitFor(() => expect(calls.some((c) => c.method === 'DELETE' && c.path === '/api/accounts/2')).toBe(true))
   })
 })
+
+describe('not open yet', () => {
+  it('explains that sign-up is closed and links back to the landing page', async () => {
+    stubApi({}, { me: null })
+    renderRoute('/not-open')
+    expect(await screen.findByRole('heading', { name: /isn't open yet/i })).toBeInTheDocument()
+    expect(screen.getByText(/only invited accounts can sign up/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /back to anisync/i })).toHaveAttribute('href', '/')
+  })
+})

@@ -11,7 +11,7 @@ import { useMe, useSite } from './api/hooks'
 import { FirstSync, PreviewChanges } from './pages/FirstSync'
 import { ListEditor } from './pages/ListEditor'
 import { Settings } from './pages/Settings'
-import { Maintenance, NotFound, Privacy } from './pages/Static'
+import { Maintenance, NotFound, NotOpen, Privacy } from './pages/Static'
 import { Landing } from './pages/Landing'
 import { LinkLists } from './pages/LinkLists'
 import { PickMaster } from './pages/PickMaster'
@@ -51,6 +51,7 @@ export function AppRoutes() {
             <Route path="site" element={<SitePage />} />
           </Route>
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/not-open" element={<NotOpen />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
     </Gate>

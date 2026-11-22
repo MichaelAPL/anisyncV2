@@ -36,6 +36,7 @@ os.environ.update(
     ANILIST_CLIENT_SECRET="e2e",
     KITSU_CLIENT_ID="",
     KITSU_CLIENT_SECRET="",
+    SIGNUP_ALLOWLIST_ENABLED="false",  # open sign-in: the browser tests create users freely
 )
 
 

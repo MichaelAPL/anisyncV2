@@ -2,9 +2,11 @@
 
 There are no AniSync passwords: you sign in with a provider that supports a redirect (OAuth) flow, and the first
 account you link creates your AniSync user (and becomes your master list). Providers that only take credentials
-(`AuthKind.PASSWORD`) can be linked once you are signed in.
+(`AuthKind.PASSWORD`) can be linked once you are signed in. While the sign-up allowlist is on (the default in
+production), only listed provider accounts may create a user; see `SIGNUP_ALLOWLIST` in config.py.
 """
 
+import logging
 import secrets
 from datetime import timedelta
 from urllib.parse import urlencode
@@ -25,6 +27,7 @@ from anisync.providers import UnknownProvider, get_provider
 from anisync.providers.base import AuthKind, Provider, TokenSet
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+log = logging.getLogger(__name__)
 
 # The OAuth state and PKCE verifier live in a short-lived signed cookie between the redirect and the callback.
 OAUTH_COOKIE = "anisync_oauth"
@@ -33,6 +36,10 @@ OAUTH_MAX_AGE = 600
 SIGN_IN_LIMIT = ratelimit.per_ip("oauth", limit=30, window=timedelta(minutes=15))
 PASSWORD_IP_LIMIT = ratelimit.per_ip("password-link", limit=5, window=timedelta(minutes=15))
 PASSWORD_USER_LIMIT = ratelimit.per_user("password-link", limit=5, window=timedelta(minutes=15))
+
+
+class SignupClosed(Exception):  # noqa: N818 (a refusal, not an error)
+    """The account isn't linked to anyone and isn't on the sign-up allowlist, so it may not create a user."""
 
 
 def _oauth_serializer() -> URLSafeTimedSerializer:
@@ -112,6 +119,9 @@ async def callback(
         user = await _link_account(session, user, provider, tokens)
     except PermissionError:
         return _failed(response, "account_already_linked", path="/dashboard")
+    except SignupClosed:
+        response.headers["location"] = f"{get_settings().public_url}/not-open"
+        return response
     if user.is_banned:
         return _failed(response, "account_banned")
     await moderation.bootstrap_admins(session)
@@ -152,6 +162,8 @@ async def link_with_password(provider_id: str, body: PasswordLogin, session: Ses
         await _link_account(session, user, provider, tokens)
     except PermissionError as exc:
         raise HTTPException(409, f"That {provider.name} account is linked to another AniSync user") from exc
+    except SignupClosed as exc:
+        raise HTTPException(403, "AniSync isn't open to new accounts yet") from exc
     return OkOut()
 
 
@@ -183,6 +195,10 @@ async def _link_account(session: Session, user: User | None, provider: Provider,
         if account:
             user = await session.get(User, account.user_id)
         else:
+            settings = get_settings()
+            if settings.signup_allowlist_enabled and (provider.id, remote.id) not in settings.signup_allowlist_ids:
+                log.info("Sign-up refused for %s:%s (not on SIGNUP_ALLOWLIST)", provider.id, remote.id)
+                raise SignupClosed
             user = User(display_name=remote.username[:40])
             if avatar := provider.safe_image_url(remote.avatar_url):
                 user.avatar_url, user.avatar_provider = avatar, provider.id  # a starting point; never changes by itself
