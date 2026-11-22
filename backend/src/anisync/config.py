@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     signup_allowlist: str = ""
     _signup_allowlist_ids: frozenset[tuple[str, str]] = PrivateAttr(default=frozenset())
 
+    # One-off donation page linked from the footer; no link while empty. One-off only: no monthly tiers or goals
+    # (see ROADMAP → Decisions, funding).
+    donation_url: str = ""
+
     @property
     def admin_ids(self) -> set[int]:
         return {int(part) for part in self.admin_user_ids.split(",") if part.strip().isdigit()}
@@ -74,6 +78,12 @@ class Settings(BaseSettings):
                 problems.append("TOKEN_ENCRYPTION_KEYS must be set (`anisync generate-key`)")
             if problems:
                 raise ValueError("; ".join(problems))
+        return self
+
+    @model_validator(mode="after")
+    def _donation_url_is_https(self) -> "Settings":
+        if self.donation_url and not self.donation_url.startswith("https://"):
+            raise ValueError("DONATION_URL must be an https:// address")
         return self
 
     @model_validator(mode="after")

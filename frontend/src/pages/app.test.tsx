@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ListEntry } from '../api/types'
 import { scrolled } from '../test/setup'
-import { account, makeMe, renderRoute, stubApi } from '../test/harness'
+import { SITE, account, makeMe, renderRoute, stubApi } from '../test/harness'
 
 beforeEach(() => localStorage.setItem('anisync-setup-done', '1'))
 
@@ -372,5 +372,20 @@ describe('not open yet', () => {
     expect(await screen.findByRole('heading', { name: /isn't open yet/i })).toBeInTheDocument()
     expect(screen.getByText(/only invited accounts can sign up/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /back to anisync/i })).toHaveAttribute('href', '/')
+  })
+})
+
+describe('footer', () => {
+  it('shows no donation link until one is configured', async () => {
+    stubApi({}, { me: null })
+    renderRoute('/privacy')
+    expect(await screen.findByText(/not affiliated with myanimelist/i)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /donate/i })).not.toBeInTheDocument()
+  })
+
+  it('links the configured one-off donation page', async () => {
+    stubApi({ 'GET /api/site': { ...SITE, donation_url: 'https://ko-fi.com/anisync' } }, { me: null })
+    renderRoute('/privacy')
+    expect(await screen.findByRole('link', { name: /donate/i })).toHaveAttribute('href', 'https://ko-fi.com/anisync')
   })
 })

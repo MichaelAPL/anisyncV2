@@ -47,6 +47,7 @@ export interface Site {
   banner_text: string | null
   banner_level: string
   updated_at: string
+  donation_url: string | null
 }
 
 export interface Change {

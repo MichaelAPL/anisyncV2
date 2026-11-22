@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { useMe, useSaveProfile } from '../api/hooks'
+import { useMe, useSaveProfile, useSite } from '../api/hooks'
 import { Icon } from './Icon'
 import { setTheme, isDark, useTheme } from '../theme'
 
@@ -41,6 +41,7 @@ export function ThemeButton() {
 }
 
 export function Footer() {
+  const { data: site } = useSite()
   return (
     <footer className="footer">
       <span>AniSync is not affiliated with MyAnimeList, AniList or Kitsu.</span>
@@ -49,6 +50,11 @@ export function Footer() {
         <a href="https://github.com/manami-project/anime-offline-database">manami-project</a> anime-offline-database (ODbL 1.0)
       </span>
       <Link to="/privacy">Privacy</Link>
+      {site?.donation_url && (
+        <a href={site.donation_url} target="_blank" rel="noopener noreferrer">
+          Donate (one-off)
+        </a>
+      )}
     </footer>
   )
 }

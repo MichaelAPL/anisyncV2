@@ -359,3 +359,25 @@ async def test_maintenance_also_pauses_the_background_work(session, admin, queue
     assert await jobs.sync_user(user.id, "scheduled") == {"skipped": "paused"}
     await jobs.sync_tick(int(NOW.replace(hour=user.id % 24, minute=0, second=0, microsecond=0).timestamp()))
     assert not queue.jobs and FakeClient.REQUESTS == []
+
+
+async def test_the_donation_link_is_off_until_a_url_is_configured(client, monkeypatch):
+    from anisync.config import get_settings
+
+    assert (await client.get("/api/site")).json()["donation_url"] is None
+    monkeypatch.setenv("DONATION_URL", "https://ko-fi.com/anisync")
+    get_settings.cache_clear()
+    try:
+        assert (await client.get("/api/site")).json()["donation_url"] == "https://ko-fi.com/anisync"
+    finally:
+        monkeypatch.delenv("DONATION_URL")
+        get_settings.cache_clear()
+
+
+def test_a_donation_link_must_be_https(monkeypatch):
+    from pydantic import ValidationError
+
+    from anisync.config import Settings
+
+    with pytest.raises(ValidationError, match="DONATION_URL"):
+        Settings(donation_url="http://ko-fi.com/anisync")

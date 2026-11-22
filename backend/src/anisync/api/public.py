@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from anisync import switches
 from anisync.api.deps import Session
+from anisync.config import get_settings
 from anisync.providers import all_providers
 
 router = APIRouter(prefix="/api", tags=["public"])
@@ -37,6 +38,7 @@ class SiteOut(BaseModel):
     banner_text: str | None  # plain text: render it as text, never as HTML
     banner_level: str
     updated_at: datetime
+    donation_url: str | None  # one-off donation page for the footer; null = show no link
 
 
 @router.get("/providers")
@@ -67,6 +69,7 @@ async def site(session: Session) -> SiteOut:
         banner_text=row.banner_text,
         banner_level=row.banner_level,
         updated_at=row.updated_at,
+        donation_url=get_settings().donation_url or None,
     )
 
 
