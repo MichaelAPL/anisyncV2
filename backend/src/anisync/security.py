@@ -73,3 +73,31 @@ class RequestIdMiddleware:
             await send(message)
 
         await self.app(scope, receive, send_with_id)
+
+
+class SecurityHeadersMiddleware:
+    """Headers every response carries: no other site may frame our pages (so buttons like "unlink" or "delete my
+    account" can't be clickjacked), browsers must not guess content types, and other sites don't see our paths."""
+
+    HEADERS = {
+        "X-Frame-Options": "DENY",
+        "Content-Security-Policy": "frame-ancestors 'none'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+    }
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in self.HEADERS.items():
+                    headers.setdefault(name, value)
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)

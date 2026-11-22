@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     # Error reporting (Sentry); off while empty.
     sentry_dsn: str = ""
 
+    # Built frontend (frontend/dist) to serve from this origin; empty in development, where Vite serves it.
+    frontend_dist: str = ""
+
     @field_validator("public_url")
     @classmethod
     def _no_trailing_slash(cls, value: str) -> str:

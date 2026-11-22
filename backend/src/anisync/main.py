@@ -2,18 +2,19 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from anisync import jobs, logs, metrics, moderation, sentry, sync
+from anisync import frontend, jobs, logs, metrics, moderation, sentry, sync
 from anisync.api import admin, admin_dataset, admin_site, admin_syncs, admin_titles, admin_users, auth, public, routes
 from anisync.config import get_settings
 from anisync.db import SessionLocal
 from anisync.providers import get_provider, is_registered
 from anisync.providers.base import RateLimited
-from anisync.security import CsrfMiddleware, RequestIdMiddleware
+from anisync.security import CsrfMiddleware, RequestIdMiddleware, SecurityHeadersMiddleware
 
 logs.configure()
 log = logging.getLogger(__name__)
@@ -92,6 +93,7 @@ async def unhandled_error(request: Request, exc: Exception) -> JSONResponse:
 
 
 # Added last = outermost: every response (including a CSRF refusal) carries a request ID.
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CsrfMiddleware, allowed_origin=settings.public_url)
 app.add_middleware(RequestIdMiddleware)
 app.include_router(auth.router)
@@ -103,3 +105,7 @@ app.include_router(admin_site.router)
 app.include_router(admin_dataset.router)
 app.include_router(admin_titles.router)
 app.include_router(public.router)
+
+# The built frontend, served from this same origin (production image). Added after every API route.
+if settings.frontend_dist:
+    frontend.mount_frontend(app, Path(settings.frontend_dist))
