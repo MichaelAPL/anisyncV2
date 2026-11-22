@@ -459,10 +459,19 @@ tests per screen configuration (Playwright).
   - **Next (item 3, later):** use the report to tell the dataset project and Kitsu about confirmed errors.
 
 - [ ] Dockerfile; Railway (or Cloudflare Pages + Neon + Render) config; production `PUBLIC_URL`, secure cookies,
-      secrets in the host's secret store.
+      secrets in the host's secret store. *(Built 2026-11-22, waits on the first deploy. Hosting decided: one VPS, Kamal 2,
+      Cloudflare Tunnel as the only way in, SSH over Tailscale, Postgres as a Kamal accessory; Railway and Pages + Neon
+      + Render were rejected. One image serves the API, worker and frontend from one origin; `config/deploy.yml`,
+      `.kamal/`, `deploy/`; walkthrough in `docs/deploy.md`. Also built for production: closed sign-up
+      (`SIGNUP_ALLOWLIST`, by provider account id), real visitor IPs behind the proxies (IPv6 bucketed by /64), refusal to
+      start without sign-in provider credentials, anti-framing headers, and sync-run heartbeats so a rolling deploy
+      never closes or doubles a live sync.)*
 - [ ] Production data protection: Postgres reachable only from the app (private network, no public port), TLS to
       the DB if the host offers it, encrypted automated backups with tested restore, least-privilege DB user for the
-      app (no superuser), and access to the hosting dashboard limited to 2FA-protected accounts.
+      app (no superuser), and access to the hosting dashboard limited to 2FA-protected accounts. *(Built 2026-11-22,
+      waits on the first deploy and the first restore drill: no published database port, owner/app/backup roles (the
+      app can't change the schema), nightly age-encrypted dumps to R2 with Bucket Lock and a heartbeat alert,
+      `deploy/backup/restore-drill.sh`. 2FA on Cloudflare, Tailscale and the VPS provider is in `docs/deploy.md`.)*
 - [ ] **Provider terms: ask each provider in writing before launch** (read 2026-11-20; re-check before launch, MAL's
       text is dated 2019). **Launch blocker until MAL and AniList answer.** Findings:
       - **MAL** (API agreement, `myanimelist.net/static/apiagreement.html`): §3(c) bars storing or processing MAL
@@ -496,10 +505,13 @@ tests per screen configuration (Playwright).
         user cascades the rest. What stays: the shared ID mapping (no user data) and anonymous request counters.
 - [ ] Monitoring with existing tools, not built in-house: **Sentry** (free tier) for errors with stack traces and
       alerts; **Better Stack or UptimeRobot** (free) for uptime checks on `/api/health`. Link both from the admin panel.
+      *(Built 2026-11-22: optional Sentry (`SENTRY_DSN`, scrubbed of tokens, codes, bodies, cookies and locals) and a
+      `/api/health` that fails when the database or the worker is down. Still to do: create the accounts, and the
+      admin-panel links.)*
 - [ ] Provider logos: MAL §17 bars its marks "in or as part of" apps beyond source attribution, and AniList/Kitsu
       publish no logo guidelines. Use the colored monogram chips; ask each provider for written permission before
       ever showing their logos.
-- [ ] Donation link (one-off only, see Decisions) and footer: non-affiliation line + dataset attribution naming both anime-offline-database projects (ODbL 1.0).
+- [x] Donation link (one-off only, see Decisions) and footer: non-affiliation line + dataset attribution naming both anime-offline-database projects (ODbL 1.0). *(Footer done; the link appears once `DONATION_URL` is set. Platform still to choose, see Open questions.)*
 
 ## Possible future providers (verify each before committing)
 

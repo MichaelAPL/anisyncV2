@@ -5,8 +5,9 @@
 Keep your MyAnimeList, AniList and Kitsu anime lists in sync. Pick one list as the master; the others
 mirror it daily and whenever you edit your list in AniSync.
 
-**Status:** built and tested locally, not deployed. A public launch waits on written answers from the providers about
-their API terms (see [docs/ROADMAP.md](docs/ROADMAP.md), Phase 6). Free and ad-free; one-off voluntary donations are the
+**Status:** built and tested locally, ready to deploy to a closed beta ([docs/deploy.md](docs/deploy.md)). A public
+launch waits on written answers from the providers about their API terms (see [docs/ROADMAP.md](docs/ROADMAP.md),
+Phase 6); until then only invited accounts can sign up. Free and ad-free; one-off voluntary donations are the
 only planned funding.
 
 ## What it does
@@ -59,6 +60,7 @@ Tests: `cd backend && uv run pytest -q` (backend, needs the Postgres container),
 `npm run e2e` (Playwright).
 
 Architecture, decisions and API quirks: [AGENTS.md](AGENTS.md). Status and next steps: [docs/ROADMAP.md](docs/ROADMAP.md).
+Deploying and operating it: [docs/deploy.md](docs/deploy.md).
 Rules every change is reviewed against, each traced to the fix that taught it: [CODING_STANDARDS.md](CODING_STANDARDS.md).
 Write-ups of solved problems go in `docs/solutions/`.
 

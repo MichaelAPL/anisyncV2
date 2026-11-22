@@ -44,7 +44,7 @@ or retires a rule).
 | Jobs | **Procrastinate** (Postgres-backed queue; Sidekiq equivalent, no Redis). Worker runs in-process with the API by default (`RUN_WORKER_IN_PROCESS`) for cheap single-container hosting |
 | DB | Postgres 17 (docker-compose, host port **5434**: 5432/5433 are taken on the dev machine) |
 | Frontend | React + Vite + TypeScript, `react-router`, `@tanstack/react-query`. Vite dev server proxies `/api` and `/auth` to FastAPI so cookies are same-origin |
-| Hosting plan | Cheap/free: Railway (~$5/mo) or Cloudflare Pages + Neon + Render/Koyeb. Everything stays Dockerizable |
+| Hosting | One VPS deployed with **Kamal 2**; the only public way in is a **Cloudflare Tunnel**, SSH only over **Tailscale**; Postgres 17 as a Kamal accessory; nightly age-encrypted backups to R2. One image (`Dockerfile`) serves the API, the in-process worker and the built frontend from one origin. Walkthrough: `docs/deploy.md` |
 
 ## Backend layout (`backend/src/anisync/`)
 
@@ -83,7 +83,12 @@ or retires a rule).
   `POST /auth/{provider}/password` (credential providers, needs a signed-in user), `POST /auth/logout`.
   `api/routes.py`: `/api/*` JSON endpoints.
 - `config.py`: pydantic-settings (`backend/.env`, template `.env.example`). Provider credentials are
-  `<PROVIDER>_CLIENT_ID` / `<PROVIDER>_CLIENT_SECRET`, read by `providers.base.credentials`.
+  `<PROVIDER>_CLIENT_ID` / `<PROVIDER>_CLIENT_SECRET`, read by `providers.base.credentials`. Production refuses to start
+  without them for every sign-in provider. `SIGNUP_ALLOWLIST_ENABLED` / `SIGNUP_ALLOWLIST` (`provider:account id`,
+  never usernames) close sign-up until the providers answer (on by default in production).
+- `frontend.py` (serves `FRONTEND_DIST` from the API's origin in the production image), `sentry.py` (optional error
+  reporting, scrubbed: no bodies, cookies, headers or locals). Sync runs carry a `heartbeat_at`; a run is stale only
+  after 15 minutes without one, so a rolling deploy never closes or doubles a live sync.
 
 ## Service quirks (hard-won, keep these in mind)
 
@@ -125,6 +130,11 @@ cd ../frontend && npm run e2e                  # Playwright in your installed Ch
 
 OAuth redirect URIs (register with each redirect-flow provider): `http://localhost:5173/auth/<provider id>/callback`
 (e.g. `mal`, `anilist`).
+
+Production: `kamal deploy` (setup, secrets, checks and backups: `docs/deploy.md`). Migrations run before the new
+container takes traffic, as the database owner role, from `.kamal/hooks/pre-deploy`; the app's own role can't change the
+schema. **Migrations are expand-only**: add columns and tables, and drop or rename only in a later deploy once no running
+version uses them, because old and new containers overlap during a deploy and a rollback runs no migration.
 
 ## Security rules (Phase 2; tests enforce most of them)
 
