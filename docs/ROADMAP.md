@@ -35,6 +35,15 @@ Update this file at the end of every working session. Work the phases in order; 
   user): the deploy takes it from `ANISYNC_DOMAIN`, nothing in the code names one. UK register: only "IN-SYNC Hub" came up
   (user's search, 2026-11-24), not checked for class or status.
 
+**2026-11-24**
+- Rename pushed to `main` (`e77258b`; the push also published 13 earlier local commits, the Phase 6 deploy work).
+  Tested: backend 571, frontend 86, browser suite 60 (all four configurations), ruff and build clean. A lite
+  compound-engineering code review found nothing to fix.
+- Fixed a browser test that depended on a fresh database: the conflicts seed (`backend/e2e/server.py`) used the same
+  ids (`m1`, `k1`...) as the fake providers' lists, so after other specs ran "Conflict Alpha" was never stored and the
+  admin-titles spec failed (it failed before the rename too). It now uses ids no other spec uses.
+- Known flake: `a11y.spec.ts` "signed-in pages" can hit its 60 s limit (2 of 6 runs); give it a longer timeout or split it.
+
 ## Not verified yet
 
 - Writes to MAL as a *mirror* (MAL has only been the master so far). AniList and Kitsu writes, the MAL and AniList OAuth round trips
@@ -445,6 +454,19 @@ tests per screen configuration (Playwright).
   2000+ entries (Phase 6); writes to MAL as a *mirror* (MAL has only been the master so far).
 
 ## Phase 6: Real-world test and deploy
+
+**Next steps (2026-11-24), in order:**
+
+1. [ ] **Send the provider messages** (see "Provider terms" below) under the name AniSyncHub; launch stays blocked until
+   MAL and AniList answer.
+2. [ ] **Domain `anisynchub.com`:** add the zone to Cloudflare, set the tunnel's public hostname, export
+   `ANISYNC_DOMAIN=anisynchub.com`, and register `https://anisynchub.com/auth/<provider>/callback` with MAL and AniList.
+3. [ ] **First deploy** (`docs/deploy.md`), with sign-up closed (`SIGNUP_ALLOWLIST`). Right after it: check the Kitsu login
+   and one full sync, because the new `AniSyncHub/0.1` User-Agent has not been tried against a real provider (Kitsu's
+   bot protection refused the default agent before).
+4. [ ] **Restore drill** (`deploy/backup/restore-drill.sh`) and the monitoring accounts (Sentry, uptime check).
+5. [ ] **Test with real accounts and large lists** (the item below), then open sign-up to invited testers.
+6. [ ] Fix the `a11y.spec.ts` "signed-in pages" timeout (longer limit, or split the test) so CI stops flaking.
 
 - [ ] Register MAL + AniList apps; end-to-end test sign-in, linking, preview, apply on throwaway accounts.
 - [ ] **Test with large lists after the first deploy** (2000+ entries on each provider, ideally an account on each
