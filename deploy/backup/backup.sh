@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One encrypted dump of the AniSync database, streamed straight to R2: no plaintext copy ever touches a disk.
+# One encrypted dump of the AniSyncHub database, streamed straight to R2: no plaintext copy ever touches a disk.
 #
 # Environment:
 #   PGHOST PGDATABASE PGUSER PGPASSWORD    the read-only anisync_backup role

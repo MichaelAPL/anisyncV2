@@ -25,7 +25,7 @@ test('an admin can find the ID conflicts, decide on one, and download the report
 
   // The report downloads through the browser session and lists the conflicts, the decided one with its note.
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: /download report/i }).click()])
-  expect(download.suggestedFilename()).toBe('anisync-id-conflicts.csv')
+  expect(download.suggestedFilename()).toBe('anisynchub-id-conflicts.csv')
   const path = await download.path()
   const { readFileSync } = await import('node:fs')
   const csv = readFileSync(path, 'utf8')

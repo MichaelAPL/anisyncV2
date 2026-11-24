@@ -41,7 +41,7 @@ function EntryForm({ entry, masterName, onClose, onSaved, onRemoved }: {
   const [confirming, setConfirming] = useState(false)
   const max = entry.total_episodes ?? undefined
   const set = <K extends keyof EntryInput>(k: K, v: EntryInput[K]) => setF((p) => ({ ...p, [k]: v }))
-  const err = (save.error ?? remove.error) instanceof ApiError ? (save.error ?? remove.error)!.message : save.isError || remove.isError ? "Couldn't reach AniSync." : null
+  const err = (save.error ?? remove.error) instanceof ApiError ? (save.error ?? remove.error)!.message : save.isError || remove.isError ? "Couldn't reach AniSyncHub." : null
   const num = score === '' ? null : Math.round(Number(score) * 10)
   const bad = num !== null && (Number.isNaN(num) || num < 0 || num > 100)
 

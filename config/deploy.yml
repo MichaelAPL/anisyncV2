@@ -1,4 +1,4 @@
-# Kamal 2 deployment for AniSync. Full walkthrough: docs/deploy.md.
+# Kamal 2 deployment for AniSyncHub. Full walkthrough: docs/deploy.md.
 #
 # Shape: one VPS reached only over Tailscale. The public reaches the app only through a Cloudflare Tunnel
 # (the cloudflared accessory), which forwards to kamal-proxy over the private `kamal` Docker network.

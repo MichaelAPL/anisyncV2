@@ -84,6 +84,6 @@ async def maintenance_guard(request: Request, session: Session) -> None:
     if row.maintenance:
         raise HTTPException(
             503,
-            row.maintenance_message or "AniSync is down for maintenance",
+            row.maintenance_message or "AniSyncHub is down for maintenance",
             headers={"Retry-After": "300"},
         )

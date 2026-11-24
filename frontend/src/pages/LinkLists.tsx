@@ -13,7 +13,7 @@ function PasswordForm({ provider }: { provider: ProviderInfo }) {
   const link = useLinkWithPassword()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const error = link.error instanceof ApiError ? link.error.message : link.isError ? "Couldn't reach AniSync." : null
+  const error = link.error instanceof ApiError ? link.error.message : link.isError ? "Couldn't reach AniSyncHub." : null
   return (
     <>
       <form
@@ -37,7 +37,7 @@ function PasswordForm({ provider }: { provider: ProviderInfo }) {
       </form>
       {error && <p className="body-m" role="alert" style={{ color: 'var(--error)' }}>{error}</p>}
       <p className="body-s muted" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-        <Icon name="lock" size={16} style={{ flex: 'none' }} /> Your password goes straight to {provider.name} in exchange for an access token. AniSync never stores it.
+        <Icon name="lock" size={16} style={{ flex: 'none' }} /> Your password goes straight to {provider.name} in exchange for an access token. AniSyncHub never stores it.
       </p>
     </>
   )

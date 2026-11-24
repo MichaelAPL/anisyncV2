@@ -14,7 +14,7 @@ execution: code
 
 ## Goal Capsule
 
-- **Objective:** AniSync runs in production on a server nobody can reach except through Cloudflare, invited testers can sign in and sync real lists, and the behaviours never tried at real size (2000+ entry lists, MAL as a mirror, production OAuth apps) have been tested on real accounts, with the public launch still gated on the providers' written answers.
+- **Objective:** AniSyncHub runs in production on a server nobody can reach except through Cloudflare, invited testers can sign in and sync real lists, and the behaviours never tried at real size (2000+ entry lists, MAL as a mirror, production OAuth apps) have been tested on real accounts, with the public launch still gated on the providers' written answers.
 - **Means:** One VPS behind a Cloudflare Tunnel, deployed with Kamal 2, Postgres as a Kamal accessory, admin access only over Tailscale (KTD1, KTD2).
 - **Authority:** This plan's Requirements win on behaviour; its KTDs win on mechanism. `AGENTS.md` and `CODING_STANDARDS.md` bind every unit. `docs/ROADMAP.md` Decisions (funding, branding, provider terms) are not reopened here.
 - **Execution profile:** One change set on `main` (the project commits straight to `main`). Code and config units first, then the runbook. The manual checklists in U8 run after the first deploy and record their results in `docs/ROADMAP.md`.
@@ -27,17 +27,17 @@ execution: code
 
 ### Summary
 
-Package AniSync as one container that serves the API, the background worker and the built frontend from one address, and deploy it with Kamal to a VPS whose only public entrance is a Cloudflare Tunnel. Add the few app changes that production behind this chain needs: real visitor IPs, a closed sign-in gate, deploy-safe sync runs, a real health check and scrubbed error reporting. Back up the database off the machine with a tested restore, and write the runbook that takes the owner from an empty VPS to a tested deployment.
+Package AniSyncHub as one container that serves the API, the background worker and the built frontend from one address, and deploy it with Kamal to a VPS whose only public entrance is a Cloudflare Tunnel. Add the few app changes that production behind this chain needs: real visitor IPs, a closed sign-in gate, deploy-safe sync runs, a real health check and scrubbed error reporting. Back up the database off the machine with a tested restore, and write the runbook that takes the owner from an empty VPS to a tested deployment.
 
 ### Problem Frame
 
-AniSync is built and tested, but only on the owner's machine. Three behaviours have never run at real size or against production settings: lists of 2000+ entries (measured only on 976), writes to MAL when MAL is a mirror, and sign-in through MAL and AniList apps registered for a production address. Running the app on a public server also changes things the local setup hides. Every request arrives through proxies, so per-IP rate limits would treat all visitors as one. Deploys start a new container while the old one is still syncing. Errors go nowhere anyone sees. And MAL's API agreement and AniList's terms leave open questions that block a public launch until each answers in writing (see `docs/ROADMAP.md`, Phase 6), so a deployed site must not be open to strangers just because it has an address.
+AniSyncHub is built and tested, but only on the owner's machine. Three behaviours have never run at real size or against production settings: lists of 2000+ entries (measured only on 976), writes to MAL when MAL is a mirror, and sign-in through MAL and AniList apps registered for a production address. Running the app on a public server also changes things the local setup hides. Every request arrives through proxies, so per-IP rate limits would treat all visitors as one. Deploys start a new container while the old one is still syncing. Errors go nowhere anyone sees. And MAL's API agreement and AniList's terms leave open questions that block a public launch until each answers in writing (see `docs/ROADMAP.md`, Phase 6), so a deployed site must not be open to strangers just because it has an address.
 
 ### Key Decisions
 
 - **Self-host on one VPS behind Cloudflare, deployed with Kamal.** (session-settled: user-directed — chosen over Railway and over Cloudflare Pages + Neon + Render: Cloudflare in front for WAF, rate limiting and bot protection, no open inbound ports.) Governs R1, R2, R3.
 - **Postgres as a Kamal accessory on the same VPS.** (session-settled: user-approved — chosen over managed Postgres: private, no network latency, direct connections for the job queue's notifications and the per-user advisory lock, no extra party holding user data.) Governs R9, R10.
-- **Sign-in stays closed until the providers answer.** Only allowlisted provider accounts can create an AniSync user in production; opening it is a config change at launch. Governs R5, R6.
+- **Sign-in stays closed until the providers answer.** Only allowlisted provider accounts can create an AniSyncHub user in production; opening it is a config change at launch. Governs R5, R6.
 - **The donation link ships off.** The platform is still undecided (ROADMAP Open questions); the link appears only once a URL is configured. Governs R14.
 
 ### Requirements
@@ -47,7 +47,7 @@ AniSync is built and tested, but only on the owner's machine. Three behaviours h
 - R1. The server accepts no inbound connections from the internet: the public reaches the app only through a Cloudflare Tunnel, and SSH is reachable only over Tailscale.
 - R2. The frontend and the API are served from the same public address, so session cookies and the CSRF origin check keep working unchanged.
 - R3. A deploy replaces the running version without downtime, and a rollback to the previous image works after a deploy that added a migration.
-- R16. Other sites cannot frame AniSync's pages, so its buttons (unlink, delete account, sign out everywhere) cannot be clickjacked.
+- R16. Other sites cannot frame AniSyncHub's pages, so its buttons (unlink, delete account, sign out everywhere) cannot be clickjacked.
 
 **Correctness behind proxies**
 
@@ -55,7 +55,7 @@ AniSync is built and tested, but only on the owner's machine. Three behaviours h
 
 **Closed access**
 
-- R5. In production, a provider account that is not on the allowlist cannot create an AniSync user, and a refused sign-in leaves no user, linked account, token or session behind.
+- R5. In production, a provider account that is not on the allowlist cannot create an AniSyncHub user, and a refused sign-in leaves no user, linked account, token or session behind.
 - R6. Signed-in users keep linking further accounts, and existing users keep signing in with accounts they already linked, whatever the allowlist says.
 - R7. Development, tests and the e2e server keep open sign-in unless they turn the gate on.
 

@@ -17,7 +17,7 @@ import { ProviderChip } from '../ui/Provider'
 import { Topbar } from '../ui/Shell'
 import { safeImage } from '../ui/images'
 
-const msg = (e: unknown) => (e instanceof ApiError ? e.message : e ? "Couldn't reach AniSync." : null)
+const msg = (e: unknown) => (e instanceof ApiError ? e.message : e ? "Couldn't reach AniSyncHub." : null)
 
 function Err({ error }: { error: unknown }) {
   const m = msg(error)
@@ -33,7 +33,7 @@ function Profile({ me, name }: { me: Me; name: (id: string) => string }) {
     <section className="card-out" aria-labelledby="prof-h" style={{ overflow: 'hidden' }}>
       <div style={{ padding: '16px 16px 8px', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <Avatar me={me} size={72} />
-        <div style={{ flex: '1 1 260px' }}><h2 id="prof-h" className="title-l">Profile</h2><p className="body-m muted">Only you and the AniSync admins see your name and picture.</p></div>
+        <div style={{ flex: '1 1 260px' }}><h2 id="prof-h" className="title-l">Profile</h2><p className="body-m muted">Only you and the AniSyncHub admins see your name and picture.</p></div>
       </div>
       <form style={{ padding: '8px 16px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}
         onSubmit={(e) => { e.preventDefault(); save.mutate({ display_name: text }) }}>
@@ -47,7 +47,7 @@ function Profile({ me, name }: { me: Me; name: (id: string) => string }) {
       <Err error={save.error} />
       <div style={{ padding: '0 16px' }}>
         <h3 className="title-m">Profile picture</h3>
-        <p className="body-m muted">Pictures are loaded from the provider, never uploaded to AniSync. Yours stays as it is when you change master; use the master's row below to refresh it after changing it there.</p>
+        <p className="body-m muted">Pictures are loaded from the provider, never uploaded to AniSyncHub. Yours stays as it is when you change master; use the master's row below to refresh it after changing it there.</p>
       </div>
       <div className="list">
         {me.accounts.map((a) => {
@@ -119,7 +119,7 @@ function SyncOptions({ me, name }: { me: Me; name: (id: string) => string }) {
     <section className="card-out" aria-labelledby="sync-h" style={{ padding: 16 }}>
       <h2 id="sync-h" className="title-l">Sync</h2>
       <p className="body-m muted" style={{ marginBottom: 8 }}>
-        Your lists sync once a day{me.next_sync_at ? ` (next: ${relative(me.next_sync_at)})` : ''} and right after you edit in AniSync. Changes made directly on a mirror are caught at its weekly full check.
+        Your lists sync once a day{me.next_sync_at ? ` (next: ${relative(me.next_sync_at)})` : ''} and right after you edit in AniSyncHub. Changes made directly on a mirror are caught at its weekly full check.
       </p>
       {me.accounts.some((a) => a.is_master) && (
         <div style={{ borderTop: '1px solid var(--outline-variant)', paddingTop: 4 }}>
@@ -215,7 +215,7 @@ function DeleteAccount() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 300px' }}>
           <h2 id="del-h" className="title-l" style={{ color: 'var(--error)' }}>Delete account</h2>
-          <p className="body-m muted">Removes your AniSync account, tokens, list copies and sync history right away. Your lists on MyAnimeList, AniList and Kitsu are not touched.</p>
+          <p className="body-m muted">Removes your AniSyncHub account, tokens, list copies and sync history right away. Your lists on MyAnimeList, AniList and Kitsu are not touched.</p>
         </div>
         {!open && <button type="button" className="btn btn-danger" onClick={() => setOpen(true)}><Icon name="trash" size={18} /> Delete account</button>}
       </div>

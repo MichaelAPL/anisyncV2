@@ -1,4 +1,4 @@
-# Deploying AniSync
+# Deploying AniSyncHub
 
 How to go from an empty VPS to a tested production deployment, and how to keep it healthy. The deployment is described in `config/deploy.yml`, `.kamal/secrets`, `.kamal/hooks/pre-deploy`, `deploy/postgres-init/` and `deploy/backup/`.
 
@@ -111,7 +111,7 @@ Sign-in starts **closed**: only provider accounts listed in `SIGNUP_ALLOWLIST` c
 1. Sign in with MAL or AniList. You will see "not open yet".
 2. `kamal app logs | grep -i 'sign-up refused'` shows your account as `provider:id` (e.g. `Sign-up refused for mal:1234567`).
 3. Add it to `ANISYNC_SIGNUP_ALLOWLIST` (comma-separated) and run `kamal deploy`.
-4. Sign in again. Find your AniSync user id (Settings, or `/api/me`).
+4. Sign in again. Find your AniSyncHub user id (Settings, or `/api/me`).
 5. Only now set `ANISYNC_ADMIN_USER_IDS` to that id and deploy. Setting it earlier would make whoever signs in first an admin.
 
 Add testers the same way, always by `provider:id`: usernames can be renamed, so they are never matched.

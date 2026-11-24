@@ -218,7 +218,7 @@ class DeleteAccountIn(BaseModel):
     dependencies=[ratelimit.per_user("delete-account", limit=3, window=timedelta(hours=1))],
 )
 async def delete_account(body: DeleteAccountIn, response: Response, user: CurrentUser, session: Session) -> OkOut:
-    """Delete your AniSync account and everything we hold about you. Your lists on the providers are not touched."""
+    """Delete your AniSyncHub account and everything we hold about you. Your lists on the providers are not touched."""
     if body.confirm.strip().lower() != "delete my account":
         raise HTTPException(422, 'Type "delete my account" to confirm')
     if permissions.ROLES_MANAGE in user.permissions and await moderation.role_managers(session) <= 1:
@@ -262,7 +262,7 @@ async def recheck_adult(account_id: int, user: CurrentUser, session: Session) ->
     account = _account(user, account_id)
     provider = get_provider(account.provider)
     if provider.adult_help is None:
-        raise HTTPException(400, f"{provider.name} has no adult-content setting that affects AniSync")
+        raise HTTPException(400, f"{provider.name} has no adult-content setting that affects AniSyncHub")
     try:
         await sync.check_adult_filter(account, await sync.client_for(account, session))
     except ReauthRequired as exc:

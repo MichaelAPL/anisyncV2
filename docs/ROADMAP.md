@@ -25,6 +25,16 @@ Update this file at the end of every working session. Work the phases in order; 
 - Repo published: https://github.com/MichaelAPL/anisyncV2 (public, `main`). CI (`.github/workflows/ci.yml`):
   ruff, pytest, oxlint, frontend build; first run green.
 
+**2026-11-22**
+- **Renamed to AniSyncHub** (user decision). Another project, anisync.qzz.io, is an add-on that tracks watch progress
+  (sign-in with MAL, AniList and Simkl; no list sync), so the names collided without the products competing. "AniSync",
+  "AniSyncHub" and "AniLinq" were not in the USPTO, EUIPO or WIPO databases on 2026-11-22 (exact-name searches only).
+  The UK register and sound-alike names have not been searched yet. Changed: every user-visible string, the `User-Agent` (`AniSyncHub/0.1`), the
+  conflict report filename, docs. Not changed on purpose: the repository name `anisyncV2`, the Python package, DB and role
+  names, `ANISYNC_*` env vars, the `anisync_session` cookie, image names. The public domain is `anisynchub.com` (bought by the
+  user): the deploy takes it from `ANISYNC_DOMAIN`, nothing in the code names one. UK register: only "IN-SYNC Hub" came up
+  (user's search, 2026-11-24), not checked for class or status.
+
 ## Not verified yet
 
 - Writes to MAL as a *mirror* (MAL has only been the master so far). AniList and Kitsu writes, the MAL and AniList OAuth round trips
@@ -56,9 +66,9 @@ Update this file at the end of every working session. Work the phases in order; 
     - Track monthly revenue in the admin panel so we see the AniList threshold coming.
   - AniList allows commercial use under $150/month revenue; we stay well under it.
   - Donations never unlock features (that would make it a paid service).
-- **Branding rules:** never present AniSync as official or affiliated with MAL, AniList or Kitsu. Use provider names
+- **Branding rules:** never present AniSyncHub as official or affiliated with MAL, AniList or Kitsu. Use provider names
   only to say where data comes from (MAL §3(a)(xi), (xiii), §17; AniList: name apps "unofficial" if they include "AniList").
-  Footer line: "AniSync is not affiliated with MyAnimeList, AniList or Kitsu."
+  Footer line: "AniSyncHub is not affiliated with MyAnimeList, AniList or Kitsu."
 
 ## Testing strategy (applies to every phase)
 
@@ -176,7 +186,7 @@ Before: every sync read the master and every mirror in full, all users at 04:00 
 AniList's ~90 req/min). Now a sync works on snapshots and a run where nothing changed costs **one small request**.
 
 - [x] **3.1 `/api/list` from snapshots.** The first read of a master fills its snapshot (one full read); after that the
-      list is served from the database. Edits through AniSync update the snapshot immediately (no read-back), removals
+      list is served from the database. Edits through AniSyncHub update the snapshot immediately (no read-back), removals
       too, and `push_entry` updates the mirror's snapshot. `POST /api/list/refresh` (6 per 5 min per user) pulls in
       edits made on the master's own site with one incremental request.
 - [x] **3.2 Incremental reads.** `fetch_list(since=cursor)` on providers with `incremental_reads` (MAL:
@@ -243,7 +253,7 @@ Stack notes (checked 2026-11-17, no stack change needed):
         roles per user = `user_roles` table; roles editable in the admin UI = `roles` + `role_permissions` tables.
 - [x] **4.1 Ban + user status model.** *(done: `users.banned_at/ban_reason/banned_by`, `admin_actions`, `moderation.ban/unban`, `POST /api/admin/users/{id}/ban|unban`, `PUT .../role`. Queued jobs are not deleted: `run_sync` and `push_entry` check the ban when they run. An admin can't ban themselves or anyone who can manage roles. Migration `d6f3a9b7c201`.)* `users.banned_at`, `ban_reason`, `banned_by`; `admin_actions` audit table
       (who, what, target, when, note). Banning revokes all the user's sessions (Phase 2.1), skips them in sync fan-out,
-      cancels their queued jobs, and blocks sign-in and re-linking (also by provider account, so a new AniSync user
+      cancels their queued jobs, and blocks sign-in and re-linking (also by provider account, so a new AniSyncHub user
       can't be created from the same MAL/AniList/Kitsu account). Unban reverses it. Tokens stay encrypted; never shown.
 - [x] **4.2 Sync logs.** *(done: `sync_run_events` with `level`, `kind` = change_failed | rate_limited | reauth | unmapped | drifted, at most 50 per mirror per run with `events_dropped` in the summary, deleted with their run; migration `e8b4c1d92a65`. The admin screens that read them are 4.4/4.5.)* `sync_runs` `trigger` values become `scheduled` | `manual` | `edit` (a run's `read`/`drifted` fields already say whether it did a full reconcile), and a
       `sync_run_events` table (run_id, account_id, level, message, media ref, created_at) for per-entry failures,
@@ -253,7 +263,7 @@ Stack notes (checked 2026-11-17, no stack change needed):
       provider requests and 429s per provider (needs request counting in `ServiceClient._request`).
 - [x] **4.4 Sync status page.** *(done: `GET /api/admin/syncs/status` (queues by state via Procrastinate's job manager, stalled jobs = no worker heartbeat for 5 min, the last hourly batch, next batch and its size, accounts whose full read is overdue; degrades to `queue_available: false` if the queue can't be read), `/syncs/runs` (filters status/trigger/user, `before_id` paging), `/syncs/runs/{id}` (summary + events), `/syncs/events` (level/kind/provider/user filters); `syncs.read`.)*  Original spec:  The last scheduled runs and the weekly full reads: started/finished, users processed, failures, queue
       depth and stuck jobs (Procrastinate jobs table); drill into a run's events.
-- [x] **4.5 User lookup page.** *(done: `GET /api/admin/users?q=&banned=&limit=&offset=` (id, name or provider username; wildcards are escaped), `GET /api/admin/users/{id}` (accounts with token state and list size, sessions, recent runs, admin action history; no tokens), `POST /api/admin/users/{id}/sync` (`syncs.retry`, audited); `users.read`. Ban/unban and role are in 4.1. "View preview", force full re-check, unlink and delete are 4.10.)*  Original spec:  Search by AniSync id, display name, or provider username; show linked accounts
+- [x] **4.5 User lookup page.** *(done: `GET /api/admin/users?q=&banned=&limit=&offset=` (id, name or provider username; wildcards are escaped), `GET /api/admin/users/{id}` (accounts with token state and list size, sessions, recent runs, admin action history; no tokens), `POST /api/admin/users/{id}/sync` (`syncs.retry`, audited); `users.read`. Ban/unban and role are in 4.1. "View preview", force full re-check, unlink and delete are 4.10.)*  Original spec:  Search by AniSyncHub id, display name, or provider username; show linked accounts
       (provider, username, token expiry/re-auth state, sync flags), recent runs with events, ban state and admin
       action history; buttons: ban/unban (with reason), trigger sync, view preview.
 - [x] **4.6 Provider health + kill switch.** *(done: `provider_settings`; `GET /api/admin/providers` (accounts, requests/429s/errors/avg ms today and over 7 days from `provider_stats`; `stats.read`), `PUT /api/admin/providers/{id}` `{paused, reason}` (`providers.manage`, reason required, audited on change). A paused provider: a paused mirror is skipped by syncs (shown as `paused` in the run summary, not an error) and by edit pushes, and catches up after resume because its snapshot lacks the change; a paused master stops its user's sync, refuses list edits and refresh with 503 (the list is still served from our copy). Public `GET /api/providers` lists every provider with `paused` and the reason, for the sign-in page and UI. Per-provider rate-limit override: not built.)*  Original spec:  Per provider: error rate, latency, 429s (from 4.3 counters). A
@@ -365,7 +375,7 @@ tests per screen configuration (Playwright).
 ### Found with real accounts (2026-11-19 and 2026-11-20), all fixed
 
 - **Kitsu's login endpoint answered 403** to the default HTTP User-Agent (bot protection), reported as "wrong
-  credentials". Every provider request now sends `User-Agent: AniSync/0.1` (`anisync/http.py`); a blocked or
+  credentials". Every provider request now sends `User-Agent: AniSyncHub/0.1` (`anisync/http.py`); a blocked or
   unreachable provider answers 502, not "rejected those credentials".
 - **One sync at a time.** `sync.start_run` opens a run under a per-user advisory lock and refuses when one is
   unfinished and under 15 minutes old (`run_sync` answers `skipped`, `POST /api/sync` answers 409). A run that raises
@@ -499,7 +509,7 @@ tests per screen configuration (Playwright).
         Discord `#api` (API terms, password-grant flow, User-Agent, bot protection).
       - **If MAL says no:** MAL becomes read-only or import-only, or the snapshot is dropped for MAL data. Decide the
         design only after the answer.
-      - Whatever they say: delete everything when a user unlinks an account or deletes their AniSync account. Done and
+      - Whatever they say: delete everything when a user unlinks an account or deletes their AniSyncHub account. Done and
         tested (2026-11-20): unlinking removes the account row (tokens, list snapshots), its sync log events and the
         user's unmatched-title rows for that provider (`deletion.forget_account`, user and admin routes); deleting the
         user cascades the rest. What stays: the shared ID mapping (no user data) and anonymous request counters.

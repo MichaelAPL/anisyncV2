@@ -1,4 +1,4 @@
-# AniSync production image: the API, the in-process job worker and the built frontend, served from one origin.
+# AniSyncHub production image: the API, the in-process job worker and the built frontend, served from one origin.
 # Deployed by Kamal (config/deploy.yml). The pre-deploy hook runs one-off commands in this same image
 # (alembic, procrastinate, python -m anisync.seed), so keep CMD overridable: no ENTRYPOINT.
 

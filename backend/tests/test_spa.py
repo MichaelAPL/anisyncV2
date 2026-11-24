@@ -16,7 +16,7 @@ from anisync.security import SecurityHeadersMiddleware
 @pytest.fixture
 def dist(tmp_path):
     (tmp_path / "assets").mkdir()
-    (tmp_path / "index.html").write_text("<!doctype html><title>AniSync</title>")
+    (tmp_path / "index.html").write_text("<!doctype html><title>AniSyncHub</title>")
     (tmp_path / "assets" / "app-1a2b3c.js").write_text("console.log('app')")
     (tmp_path / "favicon.svg").write_text("<svg/>")
     (tmp_path.parent / "secret.txt").write_text("outside dist")
@@ -40,7 +40,7 @@ def client(dist):
 
 async def test_client_side_routes_get_the_app_and_hashed_assets_are_cached_for_good(client):
     page = await client.get("/settings")
-    assert page.status_code == 200 and "<title>AniSync</title>" in page.text
+    assert page.status_code == 200 and "<title>AniSyncHub</title>" in page.text
     assert page.headers["cache-control"] == "no-cache"
     asset = await client.get("/assets/app-1a2b3c.js")
     assert asset.status_code == 200 and asset.text == "console.log('app')"

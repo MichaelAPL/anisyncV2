@@ -8,7 +8,7 @@ import { ProviderChip } from '../ui/Provider'
 const HOW = [
   { icon: 'link', title: 'Link your accounts', text: 'Connect MyAnimeList and AniList through their own sign-in pages, and Kitsu with a one-time login.' },
   { icon: 'shield', title: 'Choose a master', text: 'The master list is your source of truth. The others become mirrors that copy it.' },
-  { icon: 'sync', title: 'Stay in sync', text: 'Mirrors update daily, and right away when you edit your list in AniSync.' },
+  { icon: 'sync', title: 'Stay in sync', text: 'Mirrors update daily, and right away when you edit your list in AniSyncHub.' },
 ] as const
 
 export function Landing() {
@@ -43,7 +43,7 @@ export function Landing() {
               </div>
               <h1 className="display-l">One anime list. Every site you track on.</h1>
               <p className="body-l muted" style={{ fontSize: 18, lineHeight: '28px', maxWidth: 540 }}>
-                Pick the list you trust. AniSync keeps your other accounts matching it, every day and every time you edit.
+                Pick the list you trust. AniSyncHub keeps your other accounts matching it, every day and every time you edit.
               </p>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                 {signIn.map((p, i) => (
@@ -96,7 +96,7 @@ export function Landing() {
         <section style={{ maxWidth: 1200, margin: '0 auto', padding: '48px 24px', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
           <span style={{ color: 'var(--primary)', flex: 'none' }}><Icon name="lock" size={28} /></span>
           <p className="body-l muted" style={{ maxWidth: 760 }}>
-            AniSync never sees your MyAnimeList or AniList password. Your Kitsu password is exchanged once for an access token and
+            AniSyncHub never sees your MyAnimeList or AniList password. Your Kitsu password is exchanged once for an access token and
             never stored. <a href="/privacy">Read the privacy page</a>.
           </p>
         </section>

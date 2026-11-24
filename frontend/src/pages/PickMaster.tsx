@@ -93,7 +93,7 @@ function Body({ me }: { me: Me }) {
         <Icon name="warn" size={22} style={{ flex: 'none' }} />
         <span className="body-m" style={{ flex: '1 1 300px' }}>
           Changes you make directly on {mirrors.map((a) => name(a.provider)).join(' or ')} will be overwritten at the next full check (at least weekly).
-          Edit on {master ? name(master.provider) : 'your master'} or in AniSync instead.
+          Edit on {master ? name(master.provider) : 'your master'} or in AniSyncHub instead.
         </span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>

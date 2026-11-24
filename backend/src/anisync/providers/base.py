@@ -214,7 +214,7 @@ class Provider:
 
     @property
     def can_sign_in(self) -> bool:
-        """Users can sign in to AniSync with this provider (redirect flows only)."""
+        """Users can sign in to AniSyncHub with this provider (redirect flows only)."""
         return self.auth_kind.is_redirect
 
     def safe_image_url(self, url: str | None) -> str | None:

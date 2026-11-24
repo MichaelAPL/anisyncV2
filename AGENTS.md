@@ -1,6 +1,6 @@
-# AniSync v2 — agent context
+# AniSyncHub v2 — agent context
 
-AniSync keeps a user's anime lists on **MyAnimeList (MAL)**, **AniList** and **Kitsu** in sync.
+AniSyncHub keeps a user's anime lists on **MyAnimeList (MAL)**, **AniList** and **Kitsu** in sync.
 Public multi-user site. Rebuild of a 2022 Rails app (`~/Code/anisync`, deprecated, reference only:
 it got as far as MAL/AniList OAuth and importing a MAL list; it never synced anything).
 
@@ -17,11 +17,11 @@ or retires a rule).
 - **Two sync paths:**
   1. Scheduled sync: an hourly tick (`SYNC_TICK_CRON`) syncs the users whose `user_id % 24` is the current hour, so
      each user once a day. It reads the master incrementally, plans against **snapshots**, writes only differences.
-  2. Editing the list *in AniSync* writes to the master service immediately, then queues one
+  2. Editing the list *in AniSyncHub* writes to the master service immediately, then queues one
      `push_entry` job per mirror.
 - Edits made directly on a mirror's website are overwritten at the next **full read** of that mirror (at least
   weekly), not at every scheduled sync (shown to users).
-- No AniSync passwords: users sign in with a redirect-flow provider (OAuth); the first linked account creates the
+- No AniSyncHub passwords: users sign in with a redirect-flow provider (OAuth); the first linked account creates the
   user and becomes master. Credential-only providers (Kitsu) are linked afterwards, once signed in.
 - **Profile:** `users.display_name` is editable (1-40 chars, not unique: nobody but the user and admins sees it). The
   profile picture is a hotlinked provider image the user picks from their linked accounts (`avatar_url`); it never follows
@@ -30,7 +30,7 @@ or retires a rule).
 - Dry-run preview (`GET /api/sync/preview`) before applying the first sync.
 - **Anime only** (manga out of scope).
 - **Funding: ad-free for now (ads possible later, see ROADMAP), one-off voluntary donations only.** No monthly/recurring donations, tiers or funding goals
-  (MAL API agreement treats those as commercial); donations never unlock features. Never present AniSync as
+  (MAL API agreement treats those as commercial); donations never unlock features. Never present AniSyncHub as
   official or affiliated with MAL/AniList/Kitsu. Details: ROADMAP → Decisions.
 - **Roles → permissions:** `users.role` (`user` | `admin`, more later) maps to permission sets in code.
   Endpoints check permissions with `require_permission("users.ban")`, never role names; `/api/me` returns the
@@ -180,7 +180,7 @@ Material-style look and mobile support).
   for the artboards live in the session scratchpad only, so treat the canvas as the source of truth.
 - Dark mode: M3 dark scheme (`.theme-dark`, `.theme-auto` follows the OS). Logged-in users get a top-right
   light/dark toggle; the choice is saved on their account (`users.theme`) and in localStorage (ROADMAP Phase 5). Logo: an original ring + sync-arrows mark
-  (not based on any existing franchise artwork). Name is written "AniSync" everywhere, including the header wordmark (user, 2026-11-17).
+  (not based on any existing franchise artwork). Name is written "AniSyncHub" everywhere, including the header wordmark (user, 2026-11-17; renamed from "AniSync" on 2026-11-22 after finding an unrelated add-on called anisync.qzz.io). Only the visible brand changed: the repo (`anisyncV2`, kept so the providers can audit it), the Python package `anisync`, database and role names, env vars (`ANISYNC_*`), the `anisync_session` cookie and image names keep the old spelling on purpose.
 - Provider identity = colored monogram chips, **not logos** (trademark terms; see ROADMAP Phase 6).
 - Anime covers: hotlinked from the master provider's API image URL; designs show a placeholder tile.
 - Frontend implementation choice (Phase 5): MUI (Material UI v6+, closest to M3) or Material Web components; decide then.

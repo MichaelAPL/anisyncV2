@@ -1,9 +1,9 @@
-# AniSync
+# AniSyncHub
 
 [![CI](https://github.com/MichaelAPL/anisyncV2/actions/workflows/ci.yml/badge.svg)](https://github.com/MichaelAPL/anisyncV2/actions/workflows/ci.yml)
 
 Keep your MyAnimeList, AniList and Kitsu anime lists in sync. Pick one list as the master; the others
-mirror it daily and whenever you edit your list in AniSync.
+mirror it daily and whenever you edit your list in AniSyncHub.
 
 **Status:** built and tested locally, ready to deploy to a closed beta ([docs/deploy.md](docs/deploy.md)). A public
 launch waits on written answers from the providers about their API terms (see [docs/ROADMAP.md](docs/ROADMAP.md),
@@ -14,7 +14,7 @@ only planned funding.
 
 - You sign in with MyAnimeList or AniList (OAuth) and link the others (Kitsu uses its username and password grant).
 - You choose one linked list as the **master**. Every other linked list is a **mirror** that is updated to match it.
-- A scheduled sync runs about once a day per user. Edits made inside AniSync are also pushed to the mirrors straight away.
+- A scheduled sync runs about once a day per user. Edits made inside AniSyncHub are also pushed to the mirrors straight away.
 - Anime only. Titles are matched across sites with an open ID dataset (see Data credits).
 
 ## Data we keep
@@ -24,13 +24,13 @@ Reviewers (providers, users) can check each claim in the code.
 | What | Where | Notes |
 |---|---|---|
 | OAuth tokens | `LinkedAccount` (`models.py`) | Encrypted at rest (Fernet, rotatable keys, `crypto.py`). Never logged. |
-| Provider passwords | nowhere | Kitsu's password is exchanged for tokens and discarded. AniSync has no passwords of its own. |
+| Provider passwords | nowhere | Kitsu's password is exchanged for tokens and discarded. AniSyncHub has no passwords of its own. |
 | A copy of each linked list | `ListSnapshot` (`snapshots.py`) | Per entry: title ID and title, status, progress, score, rewatching, start and finish dates, cover URL, adult flag. Used only to work out what changed, so a sync with no changes costs one request. It is not offered as a backup or export. |
 | Sessions | `UserSession` (`sessions.py`) | Only a hash of the session token is stored. |
 | Sync history and logs | `SyncRun`, `SyncRunEvent` | Kept at most 30 days or 50 runs per user. |
 
 **Deletion.** Unlinking an account removes its tokens, list copy, sync events and unmatched-title rows
-(`deletion.forget_account`). Deleting an AniSync account removes everything about the user (`deletion.delete_user`).
+(`deletion.forget_account`). Deleting an AniSyncHub account removes everything about the user (`deletion.delete_user`).
 Both are covered by tests. Cover images and avatars are hotlinked from the providers, never stored.
 
 ## Layout
@@ -71,4 +71,4 @@ Anime ID mappings between sites are seeded from
 [manami-project/anime-offline-database](https://github.com/manami-project/anime-offline-database), both licensed under the
 [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1.0/) with contents under the
 [DbCL 1.0](https://opendatacommons.org/licenses/dbcl/1.0/). Load it with `uv run python -m anisync.seed`.
-AniSync is not affiliated with MyAnimeList, AniList or Kitsu.
+AniSyncHub is not affiliated with MyAnimeList, AniList or Kitsu.

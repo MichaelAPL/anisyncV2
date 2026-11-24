@@ -9,7 +9,7 @@ export function IgnoreAdultSwitch({ me, name }: { me: Me; name: string }) {
       <span style={{ display: 'flex', flexDirection: 'column' }}>
         <span className="body-l">Ignore adult titles on my master list</span>
         <span className="body-m muted">
-          Adult titles on {name} are not stored by AniSync, not shown in My list and not copied to any other list.
+          Adult titles on {name} are not stored by AniSyncHub, not shown in My list and not copied to any other list.
           Ones already on your other lists are never removed. Turn it off to bring them back on the next read.
         </span>
       </span>

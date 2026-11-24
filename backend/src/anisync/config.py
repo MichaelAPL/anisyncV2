@@ -39,10 +39,10 @@ class Settings(BaseSettings):
     # (user id modulo 24), so every user is synced once a day and the load is spread over the day.
     sync_tick_cron: str = "0 * * * *"
 
-    # Comma-separated AniSync user ids that are made admins when they exist (startup and sign-in). Never demotes.
+    # Comma-separated AniSyncHub user ids that are made admins when they exist (startup and sign-in). Never demotes.
     admin_user_ids: str = ""
 
-    # Closed access: while enabled, only the provider accounts listed in SIGNUP_ALLOWLIST may create an AniSync user.
+    # Closed access: while enabled, only the provider accounts listed in SIGNUP_ALLOWLIST may create an AniSyncHub user.
     # Signed-in users still link more accounts, and accounts already linked still sign in. Unset = on in production.
     signup_allowlist_enabled: bool | None = None
     # Comma-separated `provider:account id` (the provider's stable account id, never the username: usernames change).

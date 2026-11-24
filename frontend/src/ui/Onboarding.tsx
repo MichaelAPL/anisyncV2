@@ -9,13 +9,13 @@ const STEPS = ['Link lists', 'Choose master', 'Review sync']
 export function RequireUser({ children }: { children: (me: Me) => React.ReactNode }) {
   const me = useMe()
   if (me.isPending) return <p className="body-l muted" style={{ padding: 24 }} role="status">Loading…</p>
-  if (me.isError) return <p className="body-l" style={{ padding: 24 }} role="alert">Couldn't reach AniSync. Try again in a moment.</p>
+  if (me.isError) return <p className="body-l" style={{ padding: 24 }} role="alert">Couldn't reach AniSyncHub. Try again in a moment.</p>
   if (!me.data) return <Navigate to="/" replace />
   return <>{children(me.data)}</>
 }
 
 const ERRORS: Record<string, string> = {
-  account_already_linked: 'That account is already linked to another AniSync user.',
+  account_already_linked: 'That account is already linked to another AniSyncHub user.',
   account_banned: 'This account has been suspended.',
   token_exchange_failed: "The sign-in didn't complete. Please try again.",
   invalid_state: 'The sign-in expired. Please try again.',

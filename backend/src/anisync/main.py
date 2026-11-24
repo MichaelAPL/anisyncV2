@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 # No interactive API docs in production.
 docs = {} if not settings.is_production else {"docs_url": None, "redoc_url": None, "openapi_url": None}
-app = FastAPI(title="AniSync", lifespan=lifespan, dependencies=[Depends(public.maintenance_guard)], **docs)
+app = FastAPI(title="AniSyncHub", lifespan=lifespan, dependencies=[Depends(public.maintenance_guard)], **docs)
 
 
 @app.exception_handler(RateLimited)

@@ -67,7 +67,7 @@ async def _rotate_keys() -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="anisync", description="AniSync maintenance commands")
+    parser = argparse.ArgumentParser(prog="anisync", description="AniSyncHub maintenance commands")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("generate-key", help="print a new token encryption key")
     commands.add_parser("rotate-keys", help="re-encrypt stored tokens with the primary key")

@@ -1,4 +1,4 @@
-"""A throwaway AniSync server for the browser tests (Playwright). Never used anywhere else.
+"""A throwaway AniSyncHub server for the browser tests (Playwright). Never used anywhere else.
 
 It is the real application, with three differences:
 - its own database (`anisync_e2e`, dropped and rebuilt at every start), never the dev or production one;
@@ -204,10 +204,12 @@ class Config_(BaseModel):
 async def conflicts() -> dict:
     """Two ID conflicts for the admin screen: the dataset's id differs from a hint, and two titles claimed to be one."""
     async with SessionLocal() as session, IdMapper(session) as mapper:
-        await mapper.remember({"mal": "m1", "kitsu": "k1"}, title="Conflict Alpha")
-        await mapper.remember({"mal": "m2", "kitsu": "k2"}, title="Conflict Beta")
-        await mapper.remember({"mal": "m1", "kitsu": "k9"})
-        await mapper.remember({"mal": "m1", "kitsu": "k2"})
+        # Ids no other spec uses: the fake providers' lists already create titles m1/k1, m2/k2... in the shared database,
+        # and an existing title keeps its (empty) name, so "Conflict Alpha" would never be stored.
+        await mapper.remember({"mal": "cm1", "kitsu": "ck1"}, title="Conflict Alpha")
+        await mapper.remember({"mal": "cm2", "kitsu": "ck2"}, title="Conflict Beta")
+        await mapper.remember({"mal": "cm1", "kitsu": "ck9"})
+        await mapper.remember({"mal": "cm1", "kitsu": "ck2"})
         await session.commit()
     return {"ok": True}
 

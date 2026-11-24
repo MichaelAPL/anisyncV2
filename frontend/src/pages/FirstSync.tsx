@@ -104,7 +104,7 @@ function Review({ me, mode }: { me: Me; mode: 'setup' | 'preview' }) {
   const syncRunning = (runs.data ?? []).some(isRunning)
 
   if (!providers.data) return <p className="body-l muted" style={{ padding: 24 }} role="status">Loading…</p>
-  const loadError = preview.error instanceof ApiError ? preview.error.message : preview.isError ? "Couldn't reach AniSync." : null
+  const loadError = preview.error instanceof ApiError ? preview.error.message : preview.isError ? "Couldn't reach AniSyncHub." : null
   const setup = mode === 'setup'
 
   const content = (

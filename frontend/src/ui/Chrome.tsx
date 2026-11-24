@@ -14,7 +14,7 @@ export function Wordmark() {
       >
         <Icon name="logo" size={22} stroke={2.2} />
       </span>
-      AniSync
+      AniSyncHub
     </Link>
   )
 }
@@ -44,7 +44,7 @@ export function Footer() {
   const { data: site } = useSite()
   return (
     <footer className="footer">
-      <span>AniSync is not affiliated with MyAnimeList, AniList or Kitsu.</span>
+      <span>AniSyncHub is not affiliated with MyAnimeList, AniList or Kitsu.</span>
       <span>
         Anime IDs from <a href="https://github.com/cedya77/anime-offline-database">cedya77</a> and{' '}
         <a href="https://github.com/manami-project/anime-offline-database">manami-project</a> anime-offline-database (ODbL 1.0)

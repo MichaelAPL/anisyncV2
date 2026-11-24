@@ -127,12 +127,12 @@ async def test_every_provider_request_names_the_client_instead_of_the_library_de
         return_value=httpx.Response(200, json={"access_token": "a", "refresh_token": "r", "expires_in": 100})
     )
     await kitsu.password_login("a@example.com", "pw")
-    assert route.calls.last.request.headers["User-Agent"] == "AniSync/0.1"
+    assert route.calls.last.request.headers["User-Agent"] == "AniSyncHub/0.1"
     api_route = respx.get(f"{kitsu.API}/users").mock(
         return_value=httpx.Response(200, json={"data": [{"id": "1", "attributes": {"name": "k"}}]})
     )
     await kitsu.KitsuClient("tok").whoami()
-    assert api_route.calls.last.request.headers["User-Agent"] == "AniSync/0.1"
+    assert api_route.calls.last.request.headers["User-Agent"] == "AniSyncHub/0.1"
 
 
 @respx.mock

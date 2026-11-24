@@ -97,7 +97,7 @@ class PausedIn(BaseModel):
 async def pause_scheduled_syncs(
     body: PausedIn, session: Session, admin: Annotated[User, Depends(require_permission(permissions.SYNCS_CONTROL))]
 ) -> AdminSiteOut:
-    """Pause or resume the hourly scheduled syncs for everyone (edits made in AniSync still go out)."""
+    """Pause or resume the hourly scheduled syncs for everyone (edits made in AniSyncHub still go out)."""
     row = await switches.site(session)
     if row.scheduled_syncs_paused != body.paused:
         row.scheduled_syncs_paused = body.paused

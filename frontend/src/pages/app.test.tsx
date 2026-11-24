@@ -71,7 +71,7 @@ describe('dashboard', () => {
     stubApi({ 'GET /api/sync/runs': [] }, { me })
     renderRoute('/dashboard')
     const note = await screen.findByRole('note')
-    expect(note).toHaveTextContent('Kitsu is hiding adult titles from AniSync.')
+    expect(note).toHaveTextContent('Kitsu is hiding adult titles from AniSyncHub.')
     expect(note).toHaveTextContent('In Kitsu, open Settings → Adult Content and allow adult titles')
     expect(note).toHaveTextContent('Until then they are skipped.')
   })
@@ -286,7 +286,7 @@ describe('settings', () => {
     const me = makeMe({ accounts: [account(1, 'anilist', { is_master: true }), account(3, 'kitsu', { hides_adult: true })] })
     stubApi({ 'GET /api/sessions': [] }, { me })
     renderRoute('/settings')
-    expect(await screen.findByRole('note')).toHaveTextContent('Kitsu is hiding adult titles from AniSync.')
+    expect(await screen.findByRole('note')).toHaveTextContent('Kitsu is hiding adult titles from AniSyncHub.')
   })
 
   const sessions = [{ id: 1, created_at: 'x', last_seen_at: new Date().toISOString(), user_agent: 'Firefox', current: true }, { id: 2, created_at: 'x', last_seen_at: new Date().toISOString(), user_agent: 'Phone', current: false }]
@@ -371,7 +371,7 @@ describe('not open yet', () => {
     renderRoute('/not-open')
     expect(await screen.findByRole('heading', { name: /isn't open yet/i })).toBeInTheDocument()
     expect(screen.getByText(/only invited accounts can sign up/i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /back to anisync/i })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('link', { name: /back to anisynchub/i })).toHaveAttribute('href', '/')
   })
 })
 

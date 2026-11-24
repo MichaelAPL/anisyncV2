@@ -45,7 +45,7 @@ describe('link lists', () => {
   it('shows what went wrong when an OAuth round trip comes back with an error', async () => {
     stubApi({}, { me: oneAccount })
     renderRoute('/link?error=account_already_linked')
-    expect(await screen.findByRole('alert')).toHaveTextContent(/already linked to another anisync user/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/already linked to another anisynchub user/i)
   })
 })
 

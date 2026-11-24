@@ -176,13 +176,13 @@ async def test_the_weekly_schedule(session, fakes):
     assert sync.full_read_due(account, now)
 
 
-# ---- editing through AniSync ---------------------------------------------------------------------------------
+# ---- editing through AniSyncHub ---------------------------------------------------------------------------------
 
 
 async def test_a_pushed_edit_updates_the_mirrors_snapshot_so_no_resync_is_needed(session, fakes):
     user = await synced(session, fakes)
     edited = title(1, progress=77)
-    put("fa", edited)  # the master was edited through AniSync (written there and in its snapshot)
+    put("fa", edited)  # the master was edited through AniSyncHub (written there and in its snapshot)
     await snapshots.upsert(session, user.master.id, [edited], 1)
     await sync.push_entry(session, user.mirrors[0].id, "fa", "a1", edited)
     assert remote("fb")["b1"].progress == 77

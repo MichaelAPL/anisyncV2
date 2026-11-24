@@ -1,7 +1,7 @@
 """Sign-in and account linking, driven by each provider's `auth_kind`.
 
-There are no AniSync passwords: you sign in with a provider that supports a redirect (OAuth) flow, and the first
-account you link creates your AniSync user (and becomes your master list). Providers that only take credentials
+There are no AniSyncHub passwords: you sign in with a provider that supports a redirect (OAuth) flow, and the first
+account you link creates your AniSyncHub user (and becomes your master list). Providers that only take credentials
 (`AuthKind.PASSWORD`) can be linked once you are signed in. While the sign-up allowlist is on (the default in
 production), only listed provider accounts may create a user; see `SIGNUP_ALLOWLIST` in config.py.
 """
@@ -161,9 +161,9 @@ async def link_with_password(provider_id: str, body: PasswordLogin, session: Ses
     try:
         await _link_account(session, user, provider, tokens)
     except PermissionError as exc:
-        raise HTTPException(409, f"That {provider.name} account is linked to another AniSync user") from exc
+        raise HTTPException(409, f"That {provider.name} account is linked to another AniSyncHub user") from exc
     except SignupClosed as exc:
-        raise HTTPException(403, "AniSync isn't open to new accounts yet") from exc
+        raise HTTPException(403, "AniSyncHub isn't open to new accounts yet") from exc
     return OkOut()
 
 

@@ -119,7 +119,7 @@ async def test_linking_an_account_that_belongs_to_someone_else_changes_nothing(c
     assert mal_account.access_token != "t"  # Bob's token did not replace Alice's
 
 
-# Closed access: while the sign-up allowlist is on, only listed provider accounts may create an AniSync user.
+# Closed access: while the sign-up allowlist is on, only listed provider accounts may create an AniSyncHub user.
 
 
 @pytest.fixture

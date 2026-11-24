@@ -25,12 +25,12 @@ export function Privacy() {
       <main className="page page-narrow" style={{ paddingTop: 32, gap: 32 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <h1 className="display-m">Privacy</h1>
-          <p className="body-l muted">What AniSync keeps, what it never keeps, and how to delete it.</p>
+          <p className="body-l muted">What AniSyncHub keeps, what it never keeps, and how to delete it.</p>
         </div>
-        <Section title="What AniSync stores">
+        <Section title="What AniSyncHub stores">
           <ul className="body-l" style={ul}>
             <li>Your usernames and account IDs on the sites you link.</li>
-            <li>Access tokens for those accounts, encrypted. They let AniSync read and update your lists.</li>
+            <li>Access tokens for those accounts, encrypted. They let AniSyncHub read and update your lists.</li>
             <li>A copy of your list entries, used only to work out what needs syncing.</li>
             <li>Sync history (what changed and when), kept for 30 days.</li>
           </ul>
@@ -43,7 +43,7 @@ export function Privacy() {
           </ul>
         </Section>
         <Section title="Deleting your data">
-          <p className="body-l">Settings → Delete account removes your AniSync account, tokens, list copies and sync history right away. Unlinking a single account deletes its token and list copy. Your lists on MyAnimeList, AniList and Kitsu are never touched.</p>
+          <p className="body-l">Settings → Delete account removes your AniSyncHub account, tokens, list copies and sync history right away. Unlinking a single account deletes its token and list copy. Your lists on MyAnimeList, AniList and Kitsu are never touched.</p>
         </Section>
         <Section title="Cookies"><p className="body-l">One cookie keeps you signed in. No tracking or advertising cookies.</p></Section>
         <Section title="Data sources">
@@ -77,7 +77,7 @@ export function Maintenance() {
       <PublicHeader />
       <main className="page page-narrow" style={{ alignItems: 'center', textAlign: 'center', paddingTop: 64, gap: 20 }}>
         <StatusBadge icon="wrench" />
-        <h1 className="headline-l">AniSync is down for maintenance</h1>
+        <h1 className="headline-l">AniSyncHub is down for maintenance</h1>
         <p className="body-l muted" style={{ maxWidth: 520 }}>Syncing is paused and list editing is off for now. Your lists on MyAnimeList, AniList and Kitsu are untouched.</p>
         {site?.maintenance_message && (
           <div className="card" style={{ padding: '16px 20px', display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', maxWidth: 520 }}>
@@ -99,7 +99,7 @@ export function NotFound() {
       <main className="page page-narrow" style={{ alignItems: 'center', textAlign: 'center', paddingTop: 64, gap: 16 }}>
         <h1 className="headline-l">We couldn't find that page</h1>
         <p className="body-l muted">The link may be old, or the page may have moved.</p>
-        <Link to="/" className="btn btn-filled">Go to AniSync</Link>
+        <Link to="/" className="btn btn-filled">Go to AniSyncHub</Link>
       </main>
       <Footer />
     </>
@@ -113,9 +113,9 @@ export function NotOpen() {
       <PublicHeader />
       <main className="page page-narrow" style={{ alignItems: 'center', textAlign: 'center', paddingTop: 64, gap: 20 }}>
         <StatusBadge icon="lock" />
-        <h1 className="headline-l">AniSync isn't open yet</h1>
-        <p className="body-l muted" style={{ maxWidth: 520 }}>Only invited accounts can sign up for now, so no AniSync account was created and nothing was saved. Your lists on MyAnimeList, AniList and Kitsu are untouched.</p>
-        <Link to="/" className="btn btn-filled">Back to AniSync</Link>
+        <h1 className="headline-l">AniSyncHub isn't open yet</h1>
+        <p className="body-l muted" style={{ maxWidth: 520 }}>Only invited accounts can sign up for now, so no AniSyncHub account was created and nothing was saved. Your lists on MyAnimeList, AniList and Kitsu are untouched.</p>
+        <Link to="/" className="btn btn-filled">Back to AniSyncHub</Link>
       </main>
       <Footer />
     </>

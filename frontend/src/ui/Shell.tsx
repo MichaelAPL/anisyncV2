@@ -54,7 +54,7 @@ function Frame({ me }: { me: Me }) {
   return (
     <div className="shell">
       <nav className="rail" aria-label="Main">
-        <Link to="/dashboard" className="rail-logo" aria-label="AniSync home"><Icon name="logo" size={26} stroke={2.2} /></Link>
+        <Link to="/dashboard" className="rail-logo" aria-label="AniSyncHub home"><Icon name="logo" size={26} stroke={2.2} /></Link>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}><NavItems admin={admin} /></div>
       </nav>
       <div className="main">
@@ -74,7 +74,7 @@ export function Topbar({ title, sub, right, me }: { title: string; sub?: string;
   return (
     <header className="topbar">
       <span className="show-sm" style={{ marginRight: 8 }}>
-        <Link to="/dashboard" className="rail-logo" style={{ width: 40, height: 40, borderRadius: 12 }} aria-label="AniSync home">
+        <Link to="/dashboard" className="rail-logo" style={{ width: 40, height: 40, borderRadius: 12 }} aria-label="AniSyncHub home">
           <Icon name="logo" size={20} stroke={2.2} />
         </Link>
       </span>

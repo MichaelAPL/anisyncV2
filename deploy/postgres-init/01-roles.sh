@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs once, when the Postgres accessory starts on an empty data directory (docker-entrypoint-initdb.d).
-# Creates the three roles AniSync uses so that no long-running app container holds schema rights:
+# Creates the three roles AniSyncHub uses so that no long-running app container holds schema rights:
 #   anisync_owner   owns the schema and runs migrations (only the pre-deploy migrator uses it)
 #   anisync_app     what the app connects as: read and write data, no DDL
 #   anisync_backup  read-only, for the nightly dump

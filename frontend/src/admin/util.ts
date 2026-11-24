@@ -5,7 +5,7 @@ import type { Me } from '../api/types'
 
 export const can = (me: Me, perm: string) => me.permissions.includes(perm)
 export const useAdmin = () => useOutletContext<Me>()
-export const errText = (e: unknown) => (e instanceof ApiError ? e.message : e ? "Couldn't reach AniSync." : null)
+export const errText = (e: unknown) => (e instanceof ApiError ? e.message : e ? "Couldn't reach AniSyncHub." : null)
 
 export function useProviderName() {
   const { data } = useProviders()

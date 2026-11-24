@@ -87,7 +87,7 @@ async def search_users(
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
     offset: Annotated[int, Query(ge=0, le=100_000)] = 0,
 ) -> list[UserRowOut]:
-    """Search by AniSync id, display name or a linked provider username. No query lists the newest users."""
+    """Search by AniSyncHub id, display name or a linked provider username. No query lists the newest users."""
     query = select(User).order_by(User.id.desc()).limit(limit).offset(offset)
     q = q.strip()
     if q:

@@ -66,7 +66,7 @@ export function Syncs() {
           </>
         )}
         {can(me, 'syncs.control') && site.data && (
-          <Card id="sched-h" title="Scheduled syncs" sub="Pausing stops the hourly batches. Edits made in AniSync still sync.">
+          <Card id="sched-h" title="Scheduled syncs" sub="Pausing stops the hourly batches. Edits made in AniSyncHub still sync.">
             <label className="toggle-row" style={{ justifyContent: 'space-between', padding: 16 }}>
               <span className="body-l">Pause scheduled syncs</span>
               <input type="checkbox" role="switch" className="switch" checked={site.data.scheduled_syncs_paused} disabled={pause.isPending} onChange={(e) => pause.mutate(e.target.checked)} />
