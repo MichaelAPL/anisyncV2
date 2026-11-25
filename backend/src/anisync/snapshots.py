@@ -98,9 +98,9 @@ async def upsert(session: AsyncSession, account_id: int, entries: Iterable[ListE
     for start in range(0, len(rows), CHUNK):
         stmt = pg_insert(ListSnapshot).values(rows[start : start + CHUNK])
         keep = {"account_id", "external_id"}
-        update = {c: stmt.excluded[c] for c in rows[0] if c not in keep} | {"updated_at": func.now()}
+        changes = {c: stmt.excluded[c] for c in rows[0] if c not in keep} | {"updated_at": func.now()}
         await session.execute(
-            stmt.on_conflict_do_update(index_elements=[ListSnapshot.account_id, ListSnapshot.external_id], set_=update)
+            stmt.on_conflict_do_update(index_elements=[ListSnapshot.account_id, ListSnapshot.external_id], set_=changes)
         )
 
 

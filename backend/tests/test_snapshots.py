@@ -171,13 +171,3 @@ async def test_purge_stale_goes_by_the_newest_snapshot_write_when_the_read_time_
 
     assert await snapshots.count(session, quiet.id) == 0
     assert await snapshots.count(session, touched.id) == 2  # one recent write keeps the whole snapshot
-
-
-async def test_a_purged_account_gets_a_full_read_at_its_next_sync(session, fakes):
-    from anisync import sync
-
-    account = await make_account(session)
-    account.last_full_read_at = datetime.now(UTC) - timedelta(days=90)
-    await snapshots.purge_stale(session)
-    await session.refresh(account)
-    assert sync.full_read_due(account)

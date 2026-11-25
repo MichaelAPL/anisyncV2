@@ -245,3 +245,23 @@ async def test_sync_history_retention(session, fakes):
     assert await sync.purge_runs(session) == 1 + 10  # the 40-day-old one, and the 10 beyond the newest 50
     kept = (await session.scalars(select(SyncRun.user_id))).all()
     assert kept.count(a.id) == 50 and kept.count(b.id) == 1
+
+
+async def test_a_master_whose_snapshot_was_purged_is_read_in_full_at_its_next_sync(session, fakes):
+    from anisync.providers import get_provider
+
+    user = await make_user(session)
+    master = user.master
+    put("fa", title(1), title(2))
+    client = get_provider(master.provider).client("t", master.remote_user_id)
+    await sync.refresh_snapshot(session, master, client, is_master=True)
+    master.last_full_read_at = datetime.now(UTC) - timedelta(days=90)
+
+    assert await snapshots.purge_stale(session) == 1
+    assert await snapshots.count(session, master.id) == 0
+    FakeClient.REQUESTS.clear()
+
+    read = await sync.refresh_snapshot(session, master, client, is_master=True)
+
+    assert read.mode == "full"  # the next sync rebuilds the whole snapshot from the provider
+    assert await snapshots.count(session, master.id) == 2
