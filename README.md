@@ -5,10 +5,10 @@
 Keep your MyAnimeList, AniList and Kitsu anime lists in sync. Pick one list as the master; the others
 mirror it daily and whenever you edit your list in AniSyncHub.
 
-**Status:** built and tested locally, ready to deploy to a closed beta ([docs/deploy.md](docs/deploy.md)). A public
-launch waits on written answers from the providers about their API terms (see [docs/ROADMAP.md](docs/ROADMAP.md),
-Phase 6); until then only invited accounts can sign up. Free and ad-free; one-off voluntary donations are the
-only planned funding.
+**Status:** built and tested locally, ready to deploy to a closed beta ([docs/deploy.md](docs/deploy.md)). MyAnimeList,
+AniList and Kitsu have each answered our questions about API use (summary in [docs/ROADMAP.md](docs/ROADMAP.md),
+Phase 6). The beta checks writes to a real MyAnimeList account and large lists before sign-up opens to the public; until
+then only invited accounts can sign up. Free and ad-free; one-off voluntary donations are the only planned funding.
 
 ## What it does
 
@@ -25,7 +25,7 @@ Reviewers (providers, users) can check each claim in the code.
 |---|---|---|
 | OAuth tokens | `LinkedAccount` (`models.py`) | Encrypted at rest (Fernet, rotatable keys, `crypto.py`). Never logged. |
 | Provider passwords | nowhere | Kitsu's password is exchanged for tokens and discarded. AniSyncHub has no passwords of its own. |
-| A copy of each linked list | `ListSnapshot` (`snapshots.py`) | Per entry: title ID and title, status, progress, score, rewatching, start and finish dates, cover URL, adult flag. Used only to work out what changed, so a sync with no changes costs one request. It is not offered as a backup or export. |
+| A copy of each linked list | `ListSnapshot` (`snapshots.py`) | Per entry: title ID and title, status, progress, score, rewatching, start and finish dates, cover URL, adult flag. Used only to work out what changed, so a sync with no changes costs one request. It is not offered as a backup or export. Replaced by a full read at least weekly; deleted after 60 days without one (`purge_stale`). |
 | Sessions | `UserSession` (`sessions.py`) | Only a hash of the session token is stored. |
 | Sync history and logs | `SyncRun`, `SyncRunEvent` | Kept at most 30 days or 50 runs per user. |
 
