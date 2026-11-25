@@ -17,5 +17,7 @@ config
 frontend/dist
 frontend/test-results
 frontend/playwright-report
+# the throwaway browser-test server (its /__e2e routes create signed-in users); never in the image
+backend/e2e
 backend/htmlcov
 backend/.coverage
