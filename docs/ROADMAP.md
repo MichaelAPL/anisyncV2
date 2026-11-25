@@ -457,12 +457,14 @@ tests per screen configuration (Playwright).
 
 **Next steps (2026-11-24), in order:**
 
-1. [ ] **Send the provider messages** (see "Provider terms" below) under the name AniSyncHub; launch stays blocked until
-   MAL and AniList answer.
+1. [x] **Send the provider messages.** All three answered (2026-11-24, see "Provider answers" under Provider terms).
+   AniList and Kitsu are fine with the design. MAL gives no individual permission and says to stay "within the
+   guidelines". **Decided (user, 2026-11-24): launch with MAL read and write as built**; MAL knows about the project.
+   The beta tests writes to a real MAL account. If MAL objects, switch MAL to master-only (no writes to MAL).
 2. [ ] **Domain `anisynchub.com`:** add the zone to Cloudflare, set the tunnel's public hostname, export
    `ANISYNC_DOMAIN=anisynchub.com`, and register `https://anisynchub.com/auth/<provider>/callback` with MAL and AniList.
 3. [ ] **First deploy** (`docs/deploy.md`), with sign-up closed (`SIGNUP_ALLOWLIST`). Right after it: check the Kitsu login
-   and one full sync, because the new `AniSyncHub/0.1` User-Agent has not been tried against a real provider (Kitsu's
+   and one full sync, because the new `AniSyncHub/0.1 (+repo URL)` User-Agent has not been tried against a real provider (Kitsu's
    bot protection refused the default agent before).
 4. [ ] **Restore drill** (`deploy/backup/restore-drill.sh`) and the monitoring accounts (Sentry, uptime check).
 5. [ ] **Test with real accounts and large lists** (the item below), then open sign-up to invited testers.
@@ -505,7 +507,7 @@ tests per screen configuration (Playwright).
       app can't change the schema), nightly age-encrypted dumps to R2 with Bucket Lock and a heartbeat alert,
       `deploy/backup/restore-drill.sh`. 2FA on Cloudflare, Tailscale and the VPS provider is in `docs/deploy.md`.)*
 - [ ] **Provider terms: ask each provider in writing before launch** (read 2026-11-20; re-check before launch, MAL's
-      text is dated 2019). **Launch blocker until MAL and AniList answer.** Findings:
+      text is dated 2019). *(Asked and answered 2026-11-24, see "Provider answers" at the end of this item.)* Findings:
       - **MAL** (API agreement, `myanimelist.net/static/apiagreement.html`): §3(c) bars storing or processing MAL
         users' personal information or user-generated content server-side (our snapshots very likely count);
         §3(a)(vii) bars combining the API with services MAL hasn't authorized in writing (that is the sync itself);
@@ -531,6 +533,33 @@ tests per screen configuration (Playwright).
         Discord `#api` (API terms, password-grant flow, User-Agent, bot protection).
       - **If MAL says no:** MAL becomes read-only or import-only, or the snapshot is dropped for MAL data. Decide the
         design only after the answer.
+      - **Provider answers (2026-11-24; full text kept by the user outside the repo):**
+        - **MAL:** "We are unable to provide permission on an individual basis regarding API, but please feel free to
+          use it within the guidelines." Access may be restricted if requests burden their system. Not a yes or a no
+          to §3(c), §3(a)(vii) or §3(a)(xii). Rate limits (an admin): none published and none planned; limits exist
+          per user across apps, per user and app, per app and for anonymous use, and change with global load. MAL also
+          goes down for maintenance. Clients must survive random 429s and outages. We already do: 429 waits out
+          `Retry-After` (capped) and retries, reads retry network errors, the sync ends cleanly and the next one
+          catches up from snapshots.
+        - **AniList:** a sync tool is complementary ("using the API like a normal client"). A cache is fine if it
+          has a TTL and isn't permanent; don't cache too aggressively, and don't write outdated data over newer
+          content when syncing. Donations don't count toward the $150/month threshold (their concern is putting
+          AniList data or features behind payment).
+        - **Kitsu:** the password grant is their best flow for now (other OAuth2 flows are being worked on). The
+          User-Agent is fine; they suggested adding the repo URL, done (`AniSyncHub/0.1
+          (+https://github.com/MichaelAPL/anisyncV2)`). The only enforced rate limit is `/api/graphql`, 15 requests per
+          15 s per IP; we use JSON:API. Spikes are fine "as long as it falls off". The snapshot cache is fine.
+        - **Follow-ups:**
+          - [x] Decide on MAL: **launch with MAL read and write as built** (user, 2026-11-24). MAL knows about the
+            project. Fallback if MAL objects after the beta: MAL as master only (no writes to MAL), the most
+            conservative reading of §3(a)(xii).
+          - [ ] Beta: test writes to a real MAL account with MAL as a mirror (never verified so far).
+          - [ ] Snapshot TTL for AniList's "not permanent": snapshots are already replaced at least weekly by full
+            reads and deleted on unlink. Missing: an expiry for accounts that stop syncing (sync off, user gone
+            quiet, re-auth needed for months). E.g. drop the snapshots of an account not read for 60 days; the next
+            sync does a full read.
+          - [ ] Kitsu pacing: `rate_limit=(2, 1)` could go higher (e.g. 4/s) for first syncs of big lists, given the
+            answer. Measure on the large-list test first.
       - Whatever they say: delete everything when a user unlinks an account or deletes their AniSyncHub account. Done and
         tested (2026-11-20): unlinking removes the account row (tokens, list snapshots), its sync log events and the
         user's unmatched-title rows for that provider (`deletion.forget_account`, user and admin routes); deleting the

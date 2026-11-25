@@ -4,7 +4,7 @@ client through."""
 
 import httpx
 
-USER_AGENT = "AniSyncHub/0.1"
+USER_AGENT = "AniSyncHub/0.1 (+https://github.com/MichaelAPL/anisyncV2)"
 
 
 def client(**kwargs) -> httpx.AsyncClient:
