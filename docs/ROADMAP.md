@@ -42,7 +42,7 @@ Update this file at the end of every working session. Work the phases in order; 
 - Fixed a browser test that depended on a fresh database: the conflicts seed (`backend/e2e/server.py`) used the same
   ids (`m1`, `k1`...) as the fake providers' lists, so after other specs ran "Conflict Alpha" was never stored and the
   admin-titles spec failed (it failed before the rename too). It now uses ids no other spec uses.
-- Known flake: `a11y.spec.ts` "signed-in pages" can hit its 60 s limit (2 of 6 runs); give it a longer timeout or split it.
+- Known flake: `a11y.spec.ts` "signed-in pages" could hit its 60 s limit (2 of 6 runs); fixed 2026-11-24 by splitting it per page.
 
 ## Not verified yet
 
@@ -468,7 +468,8 @@ tests per screen configuration (Playwright).
    bot protection refused the default agent before).
 4. [ ] **Restore drill** (`deploy/backup/restore-drill.sh`) and the monitoring accounts (Sentry, uptime check).
 5. [ ] **Test with real accounts and large lists** (the item below), then open sign-up to invited testers.
-6. [ ] Fix the `a11y.spec.ts` "signed-in pages" timeout (longer limit, or split the test) so CI stops flaking.
+6. [x] Fixed the `a11y.spec.ts` timeout (2026-11-24): one test per signed-in page (about 2 s each) instead of nine pages in
+   one 60 s test. Ran the a11y specs in all four configurations: 40 passed. CI still to watch on the next push.
 
 - [ ] Register MAL + AniList apps; end-to-end test sign-in, linking, preview, apply on throwaway accounts.
 - [ ] **Test with large lists after the first deploy** (2000+ entries on each provider, ideally an account on each
