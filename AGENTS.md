@@ -67,7 +67,7 @@ or retires a rule).
 - `engine.py`: **pure** diff (`plan_sync`): no I/O, unit + property tested.
 - `snapshots.py`: what we last read/wrote per account (`list_snapshots`). Syncs plan from snapshots; a no-change sync
   costs one request (the master's incremental read). Full reads (first sync, weekly, forced) replace the snapshot and
-  are the only way to notice removals and direct edits (`drifted`). Snapshots of an account not fully read for 60 days are purged by the daily housekeeping (`purge_stale`). `mapping.py` also keeps a 7-day negative lookup cache.
+  are the only way to notice removals and direct edits (`drifted`). Snapshots of an account not fully read for 60 days are purged by the daily housekeeping (`purge_stale`; with no read time, by the newest snapshot write). `mapping.py` also keeps a 7-day negative lookup cache.
 - `sync.py`: orchestration (token refresh via the provider's `refresh` hook, run plans, `push_entry`). `jobs.py`: Procrastinate tasks.
 - `permissions.py` (roles → permissions), `moderation.py` (ban/unban/role changes + `admin_actions` audit), `api/admin.py`
   (`/api/admin/*`, split into `admin.py`, `admin_syncs.py`, `admin_users.py`, `admin_site.py`, `admin_dataset.py`, `admin_titles.py`; every route uses `Depends(require_permission(...))`, a test enforces it). Banned users count as signed out.

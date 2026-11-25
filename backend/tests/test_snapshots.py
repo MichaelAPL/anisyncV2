@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from anisync import snapshots
 from anisync.models import LinkedAccount, ListSnapshot, User
@@ -144,6 +144,33 @@ async def test_purge_stale_drops_snapshots_nobody_has_read_in_a_long_time(sessio
     assert fresh.last_full_read_at is not None and fresh.sync_cursor is not None
     await session.refresh(never)
     assert never.last_full_read_at is None
+
+
+async def test_purge_stale_goes_by_the_newest_snapshot_write_when_the_read_time_was_cleared(session, fakes):
+    now = datetime(2026, 11, 24, tzinfo=UTC)
+    quiet = await make_account(session, remote="quiet")
+    touched = await make_account(session, remote="touched")
+    for account in (quiet, touched):
+        assert account.last_full_read_at is None  # cleared, as by a forced full check
+        await snapshots.upsert(session, account.id, [entry(1), entry(2)], 1)
+    await session.execute(
+        update(ListSnapshot).where(ListSnapshot.account_id == quiet.id).values(updated_at=now - timedelta(days=61))
+    )
+    await session.execute(
+        update(ListSnapshot)
+        .where(ListSnapshot.account_id == touched.id, ListSnapshot.external_id == "a1")
+        .values(updated_at=now - timedelta(days=90))
+    )
+    await session.execute(
+        update(ListSnapshot)
+        .where(ListSnapshot.account_id == touched.id, ListSnapshot.external_id == "a2")
+        .values(updated_at=now - timedelta(days=2))
+    )
+
+    assert await snapshots.purge_stale(session, now=now) == 1
+
+    assert await snapshots.count(session, quiet.id) == 0
+    assert await snapshots.count(session, touched.id) == 2  # one recent write keeps the whole snapshot
 
 
 async def test_a_purged_account_gets_a_full_read_at_its_next_sync(session, fakes):

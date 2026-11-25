@@ -54,7 +54,7 @@ async def flush_metrics(timestamp: int) -> None:
 @app.periodic(cron="30 3 * * *", periodic_id="housekeeping")
 @app.task(queue="maintenance", queueing_lock="housekeeping")
 async def housekeeping(timestamp: int) -> None:
-    """Delete expired sessions, old rate-limit attempts and old sync history."""
+    """Delete expired sessions, old rate-limit attempts, old sync history and stale list snapshots."""
     async with SessionLocal() as session:
         expired = await sessions.purge_expired(session)
         attempts = await ratelimit.purge_old(session)

@@ -179,6 +179,28 @@ async def test_the_daily_housekeeping_closes_stale_runs(session, monkeypatch):
 
 
 @usesfakes
+async def test_the_daily_housekeeping_drops_stale_list_snapshots(session, monkeypatch):
+    user = await make_user(session)
+    account = user.master
+    await snapshots.upsert(session, account.id, [title(1)], 1)
+    account.last_full_read_at = datetime.now(UTC) - timedelta(days=90)
+    account.sync_cursor = account.last_full_read_at
+
+    class Shared:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(jobs, "SessionLocal", Shared)
+    await jobs.housekeeping(0)
+    await session.refresh(account)
+    assert await snapshots.count(session, account.id) == 0
+    assert account.last_full_read_at is None and account.sync_cursor is None
+
+
+@usesfakes
 async def test_the_dashboard_stops_treating_an_interrupted_run_as_running(session):
     user = await make_user(session)
     row = await run_row(session, user.id, timedelta(minutes=30))

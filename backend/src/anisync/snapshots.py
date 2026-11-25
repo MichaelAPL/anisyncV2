@@ -12,7 +12,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,18 +125,35 @@ async def purge_stale(session: AsyncSession, ttl: timedelta = SNAPSHOT_TTL, now:
     """Delete the snapshots of accounts whose list we haven't read in full for `ttl`; returns the accounts affected.
 
     Syncing accounts are read in full at least weekly, so only accounts that stopped syncing reach this (sync off,
-    re-link needed, a user who went quiet). Clearing `last_full_read_at` and `sync_cursor` makes the next sync start
-    from a full read, so nothing outdated is ever planned from, or written over newer data."""
+    re-link needed, a user who went quiet). An account whose `last_full_read_at` was cleared (a forced full check,
+    turning off "ignore adult titles") and then stopped syncing has no read time to go by, so the newest write to its
+    snapshot counts instead. Clearing `last_full_read_at` and `sync_cursor` makes the next sync start from a full
+    read, so nothing outdated is ever planned from, or written over newer data."""
     cutoff = (now or datetime.now(UTC)) - ttl
-    stale = select(LinkedAccount.id).where(LinkedAccount.last_full_read_at < cutoff)
+    untouched = (
+        select(ListSnapshot.account_id)
+        .group_by(ListSnapshot.account_id)
+        .having(func.max(ListSnapshot.updated_at) < cutoff)
+    )
+    # Ids first: deleting the rows would otherwise change which accounts the second statement matches.
+    stale = list(
+        await session.scalars(
+            select(LinkedAccount.id).where(
+                or_(
+                    LinkedAccount.last_full_read_at < cutoff,
+                    and_(LinkedAccount.last_full_read_at.is_(None), LinkedAccount.id.in_(untouched)),
+                )
+            )
+        )
+    )
+    if not stale:
+        return 0
     await session.execute(delete(ListSnapshot).where(ListSnapshot.account_id.in_(stale)))
-    result = await session.execute(
-        update(LinkedAccount)
-        .where(LinkedAccount.last_full_read_at < cutoff)
-        .values(last_full_read_at=None, sync_cursor=None)
+    await session.execute(
+        update(LinkedAccount).where(LinkedAccount.id.in_(stale)).values(last_full_read_at=None, sync_cursor=None)
     )
     await session.commit()
-    return result.rowcount or 0
+    return len(stale)
 
 
 async def remove(session: AsyncSession, account_id: int, external_ids: Sequence[str]) -> None:

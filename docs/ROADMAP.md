@@ -558,7 +558,7 @@ tests per screen configuration (Playwright).
           - [x] Snapshot TTL (done 2026-11-24): `snapshots.purge_stale` in the daily housekeeping deletes the snapshots
             of accounts not read in full for 60 days (`SNAPSHOT_TTL`) and clears `last_full_read_at` and `sync_cursor`,
             so the next sync starts with a full read. Syncing accounts are read in full weekly and never reach it.
-            Backend 573 tests.
+            Backend 575 tests. Also expires snapshots of an account whose `last_full_read_at` was cleared and that then stopped syncing, going by the newest snapshot write (found by code review).
           - [ ] Kitsu pacing: `rate_limit=(2, 1)` could go higher (e.g. 4/s) for first syncs of big lists, given the
             answer. Measure on the large-list test first.
       - Whatever they say: delete everything when a user unlinks an account or deletes their AniSyncHub account. Done and
