@@ -554,10 +554,10 @@ tests per screen configuration (Playwright).
             project. Fallback if MAL objects after the beta: MAL as master only (no writes to MAL), the most
             conservative reading of §3(a)(xii).
           - [ ] Beta: test writes to a real MAL account with MAL as a mirror (never verified so far).
-          - [ ] Snapshot TTL for AniList's "not permanent": snapshots are already replaced at least weekly by full
-            reads and deleted on unlink. Missing: an expiry for accounts that stop syncing (sync off, user gone
-            quiet, re-auth needed for months). E.g. drop the snapshots of an account not read for 60 days; the next
-            sync does a full read.
+          - [x] Snapshot TTL (done 2026-11-24): `snapshots.purge_stale` in the daily housekeeping deletes the snapshots
+            of accounts not read in full for 60 days (`SNAPSHOT_TTL`) and clears `last_full_read_at` and `sync_cursor`,
+            so the next sync starts with a full read. Syncing accounts are read in full weekly and never reach it.
+            Backend 573 tests.
           - [ ] Kitsu pacing: `rate_limit=(2, 1)` could go higher (e.g. 4/s) for first syncs of big lists, given the
             answer. Measure on the large-list test first.
       - Whatever they say: delete everything when a user unlinks an account or deletes their AniSyncHub account. Done and

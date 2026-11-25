@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select
 
@@ -122,3 +122,35 @@ async def test_deleting_the_account_deletes_its_snapshot(session, fakes):
     await session.delete(account)
     await session.flush()
     assert await session.scalar(select(func.count()).select_from(ListSnapshot)) == 0
+
+
+async def test_purge_stale_drops_snapshots_nobody_has_read_in_a_long_time(session, fakes):
+    now = datetime(2026, 11, 24, tzinfo=UTC)
+    old = await make_account(session, remote="old")
+    fresh = await make_account(session, remote="fresh")
+    never = await make_account(session, remote="never")
+    old.last_full_read_at, old.sync_cursor = now - timedelta(days=61), now - timedelta(days=61)
+    fresh.last_full_read_at, fresh.sync_cursor = now - timedelta(days=59), now - timedelta(days=59)
+    for account in (old, fresh):
+        await snapshots.upsert(session, account.id, [entry(1)], 1)
+
+    assert await snapshots.purge_stale(session, now=now) == 1
+
+    await session.refresh(old)
+    await session.refresh(fresh)
+    assert await snapshots.count(session, old.id) == 0
+    assert old.last_full_read_at is None and old.sync_cursor is None  # the next sync starts with a full read
+    assert await snapshots.count(session, fresh.id) == 1
+    assert fresh.last_full_read_at is not None and fresh.sync_cursor is not None
+    await session.refresh(never)
+    assert never.last_full_read_at is None
+
+
+async def test_a_purged_account_gets_a_full_read_at_its_next_sync(session, fakes):
+    from anisync import sync
+
+    account = await make_account(session)
+    account.last_full_read_at = datetime.now(UTC) - timedelta(days=90)
+    await snapshots.purge_stale(session)
+    await session.refresh(account)
+    assert sync.full_read_due(account)

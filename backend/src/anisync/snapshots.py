@@ -10,15 +10,17 @@ show up in a full read, which therefore happens at least weekly.
 import hashlib
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from anisync.models import ListSnapshot
+from anisync.models import LinkedAccount, ListSnapshot
 from anisync.providers.base import ListEntry, Status, quantize_score
 
 CHUNK = 1000
+SNAPSHOT_TTL = timedelta(days=60)  # a snapshot is a sync cache, not storage: one nobody has read this long is dropped
 
 
 def synced_hash(entry: ListEntry, score_step: int) -> str:
@@ -116,6 +118,24 @@ async def remove_adult(session: AsyncSession, account_id: int) -> int:
     result = await session.execute(
         delete(ListSnapshot).where(ListSnapshot.account_id == account_id, ListSnapshot.adult.is_(True))
     )
+    return result.rowcount or 0
+
+
+async def purge_stale(session: AsyncSession, ttl: timedelta = SNAPSHOT_TTL, now: datetime | None = None) -> int:
+    """Delete the snapshots of accounts whose list we haven't read in full for `ttl`; returns the accounts affected.
+
+    Syncing accounts are read in full at least weekly, so only accounts that stopped syncing reach this (sync off,
+    re-link needed, a user who went quiet). Clearing `last_full_read_at` and `sync_cursor` makes the next sync start
+    from a full read, so nothing outdated is ever planned from, or written over newer data."""
+    cutoff = (now or datetime.now(UTC)) - ttl
+    stale = select(LinkedAccount.id).where(LinkedAccount.last_full_read_at < cutoff)
+    await session.execute(delete(ListSnapshot).where(ListSnapshot.account_id.in_(stale)))
+    result = await session.execute(
+        update(LinkedAccount)
+        .where(LinkedAccount.last_full_read_at < cutoff)
+        .values(last_full_read_at=None, sync_cursor=None)
+    )
+    await session.commit()
     return result.rowcount or 0
 
 

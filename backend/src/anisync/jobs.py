@@ -12,7 +12,7 @@ import httpx
 from procrastinate import App, PsycopgConnector, RetryStrategy
 from procrastinate.exceptions import AlreadyEnqueued
 
-from anisync import metrics, ratelimit, seed, sessions, switches, sync, unmatched
+from anisync import metrics, ratelimit, seed, sessions, snapshots, switches, sync, unmatched
 from anisync.config import get_settings
 from anisync.db import SessionLocal
 from anisync.providers.base import ListEntry, RateLimited
@@ -61,14 +61,17 @@ async def housekeeping(timestamp: int) -> None:
         runs = await sync.purge_runs(session)
         titles = await unmatched.purge(session)
         stopped = await sync.close_interrupted_runs(session)
+        expired_snapshots = await snapshots.purge_stale(session)
     if stopped:
         log.warning("housekeeping: closed %s sync run(s) that stopped halfway", stopped)
     log.info(
-        "housekeeping: removed %s sessions, %s rate-limit rows, %s sync runs, %s unmatched titles",
+        "housekeeping: removed %s sessions, %s rate-limit rows, %s sync runs, %s unmatched titles, "
+        "%s stale list snapshots",
         expired,
         attempts,
         runs,
         titles,
+        expired_snapshots,
     )
 
 
